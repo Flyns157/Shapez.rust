@@ -7,6 +7,7 @@ use bevy::{
 
 use crate::{
     AppState,
+    placement_ui::PlacementState,
     sim::{GameSpeed, Sim},
 };
 
@@ -20,13 +21,17 @@ impl Plugin for MenuPlugin {
             .add_systems(OnEnter(AppState::InGame), spawn_hud)
             .add_systems(
                 Update,
-                (update_hud, game_keys).run_if(in_state(AppState::InGame)),
+                (update_hud, game_keys.before(crate::camera::CameraSet))
+                    .run_if(in_state(AppState::InGame)),
             );
     }
 }
 
 #[derive(Component, Debug)]
 struct PlayButton;
+
+#[derive(Component, Debug)]
+struct GalleryButton;
 
 #[derive(Component, Debug)]
 struct TickText;
@@ -65,17 +70,35 @@ fn spawn_menu(mut commands: Commands) {
                 BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
                 children![Text::new("Jouer")],
             ),
+            (
+                GalleryButton,
+                Button,
+                ActivateOnPress,
+                Node {
+                    width: px(180),
+                    height: px(48),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
+                children![Text::new("Formes")],
+            ),
         ],
     ));
 }
 
 fn start_game(
     activate: On<Activate>,
-    buttons: Query<(), With<PlayButton>>,
+    play: Query<(), With<PlayButton>>,
+    gallery: Query<(), With<GalleryButton>>,
     mut next: ResMut<NextState<AppState>>,
 ) {
-    if buttons.contains(activate.event_target()) {
+    let target = activate.event_target();
+    if play.contains(target) {
         next.set(AppState::InGame);
+    } else if gallery.contains(target) {
+        next.set(AppState::ShapeGallery);
     }
 }
 
@@ -95,27 +118,31 @@ fn spawn_hud(mut commands: Commands) {
 
 fn update_hud(sim: Res<Sim>, speed: Res<GameSpeed>, mut text: Single<&mut Text, With<TickText>>) {
     text.0 = format!(
-        "Tick {} - vitesse x{} (1/2/4, espace = pause, Echap = menu)",
+        "Tick {} - vitesse x{} - graine {} (ZQSD/fleches, molette, clic milieu ; Tab = vitesse, espace = pause, Echap = menu)",
         sim.tick_count(),
-        speed.0
+        speed.0,
+        sim.map.seed()
     );
 }
 
 fn game_keys(
     keys: Res<ButtonInput<KeyCode>>,
+    placement: Res<PlacementState>,
     mut speed: ResMut<GameSpeed>,
     mut next: ResMut<NextState<AppState>>,
 ) {
-    if keys.just_pressed(KeyCode::Digit1) {
-        speed.0 = 1;
-    } else if keys.just_pressed(KeyCode::Digit2) {
-        speed.0 = 2;
-    } else if keys.just_pressed(KeyCode::Digit4) {
-        speed.0 = 4;
-    } else if keys.just_pressed(KeyCode::Space) {
+    if keys.just_pressed(KeyCode::Space) {
         speed.0 = if speed.0 == 0 { 1 } else { 0 };
+    } else if keys.just_pressed(KeyCode::Tab) {
+        // x1 -> x2 -> x4 -> x1
+        speed.0 = match speed.0 {
+            1 => 2,
+            2 => 4,
+            _ => 1,
+        };
     }
-    if keys.just_pressed(KeyCode::Escape) {
+    // Echap désélectionne d'abord le bâtiment en cours ; sinon retour au menu.
+    if keys.just_pressed(KeyCode::Escape) && placement.selected.is_none() {
         next.set(AppState::MainMenu);
     }
 }
