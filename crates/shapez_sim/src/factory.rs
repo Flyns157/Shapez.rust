@@ -26,7 +26,7 @@ const MAX_QUEUED_CHARGES: usize = 2;
 const CHAIN_BUFFER_SIZE: usize = 6;
 
 /// Où un slot d'éjection livre ses items (cache recalculé quand le voisinage change).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum EjectTarget {
     #[default]
     None,
@@ -39,7 +39,7 @@ pub enum EjectTarget {
 }
 
 /// Slot d'éjection en coordonnées monde (`ItemEjectorSlot`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct EjectSlot {
     pub pos: TilePos,
     pub to: Direction,
@@ -50,7 +50,7 @@ pub struct EjectSlot {
 }
 
 /// `ItemEjectorComponent`.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Ejector {
     pub slots: Vec<EjectSlot>,
 }
@@ -75,7 +75,7 @@ impl Ejector {
 }
 
 /// Item produit par une charge, avec sa contrainte de sortie.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct OutItem {
     item: Item,
     required_slot: Option<usize>,
@@ -92,14 +92,14 @@ impl OutItem {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct Charge {
     items: Vec<OutItem>,
     remaining: i64,
 }
 
 /// `ItemProcessorComponent`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Processor {
     pub kind: ProcessorKind,
     inputs_per_charge: usize,
@@ -166,7 +166,7 @@ impl Processor {
 }
 
 /// Cache `cachedChainedMiner` : `Unknown` correspond au `null` du JS, `None` à `false`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum ChainCache {
     Unknown,
     None,
@@ -174,7 +174,7 @@ enum ChainCache {
 }
 
 /// `MinerComponent`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Miner {
     chainable: bool,
     last_mining_time: u64,
@@ -184,7 +184,7 @@ pub struct Miner {
 }
 
 /// `UndergroundBeltComponent`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tunnel {
     sender: bool,
     tier2: bool,
@@ -217,7 +217,7 @@ impl Tunnel {
 }
 
 /// Bâtiments qui reçoivent des items depuis un convoyeur ou un éjecteur.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 struct Receivers {
     processors: SecondaryMap<BuildingId, Processor>,
     tunnels: SecondaryMap<BuildingId, Tunnel>,
@@ -270,7 +270,7 @@ pub struct VisibleItem {
 }
 
 /// État logistique de tous les bâtiments.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Factory {
     paths: SlotMap<BeltPathId, BeltPath>,
     /// Ordre de mise à jour des chemins (`BeltSystem.beltPaths`).

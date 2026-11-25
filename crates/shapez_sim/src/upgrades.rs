@@ -9,7 +9,9 @@ use std::sync::OnceLock;
 use crate::units::IMPROVEMENT_ONE;
 
 /// Famille d'améliorations.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum UpgradeKind {
     Belt,
     Miner,

@@ -7,9 +7,11 @@ pub mod buildings_view;
 pub mod camera;
 pub mod gallery;
 pub mod items_view;
+pub mod main_menu;
 pub mod map_render;
 pub mod menu;
 pub mod placement_ui;
+pub mod saves;
 pub mod shape_textures;
 pub mod shop;
 pub mod sim;
@@ -23,18 +25,24 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((state::AppStatePlugin, sim::SimPlugin, menu::MenuPlugin))
-            .add_plugins((
-                shape_textures::ShapeTexturesPlugin,
-                gallery::GalleryPlugin,
-                camera::CameraPlugin,
-                map_render::MapRenderPlugin,
-                buildings_view::BuildingsViewPlugin,
-                items_view::ItemsViewPlugin,
-                placement_ui::PlacementUiPlugin,
-                shop::PanelsPlugin,
-            ))
-            .add_systems(Startup, spawn_camera);
+        app.add_plugins((
+            state::AppStatePlugin,
+            sim::SimPlugin,
+            menu::MenuPlugin,
+            main_menu::MainMenuPlugin,
+        ))
+        .add_plugins((
+            shape_textures::ShapeTexturesPlugin,
+            gallery::GalleryPlugin,
+            camera::CameraPlugin,
+            map_render::MapRenderPlugin,
+            buildings_view::BuildingsViewPlugin,
+            items_view::ItemsViewPlugin,
+            placement_ui::PlacementUiPlugin,
+            shop::PanelsPlugin,
+            saves::SavesPlugin,
+        ))
+        .add_systems(Startup, spawn_camera);
     }
 }
 

@@ -149,10 +149,34 @@ pub enum CommandError {
 }
 
 /// Bâtiments du monde et leur occupation de la grille.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(from = "BuildingsData")]
 pub struct Buildings {
     arena: SlotMap<BuildingId, Building>,
+    /// Déduite de l'arène, reconstruite au chargement.
+    #[serde(skip)]
     grid: OccupancyGrid,
+}
+
+/// Forme sérialisée de [`Buildings`] : l'arène seule.
+#[derive(serde::Deserialize)]
+struct BuildingsData {
+    arena: SlotMap<BuildingId, Building>,
+}
+
+impl From<BuildingsData> for Buildings {
+    fn from(data: BuildingsData) -> Self {
+        let mut grid = OccupancyGrid::default();
+        for (id, building) in &data.arena {
+            for tile in building.tiles() {
+                grid.set(tile, Some(id));
+            }
+        }
+        Self {
+            arena: data.arena,
+            grid,
+        }
+    }
 }
 
 impl Buildings {

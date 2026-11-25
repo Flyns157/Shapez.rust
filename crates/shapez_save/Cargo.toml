@@ -1,0 +1,24 @@
+[package]
+name = "shapez_save"
+description = "Format de sauvegarde natif : en-tête, état compressé, CRC32 et migrations."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+shapez_sim.workspace = true
+serde.workspace = true
+serde_json = "1"
+zstd = { version = "0.13", default-features = false }
+crc32fast = "1"
+directories = "6"
+
+
+[dev-dependencies]
+shapez_core.workspace = true
+
+[lints]
+workspace = true

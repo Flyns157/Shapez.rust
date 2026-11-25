@@ -1,10 +1,7 @@
-//! Menu principal minimal et HUD de jeu : objectif du hub, notifications de niveau et
-//! d'amélioration.
+//! HUD de jeu : objectif du hub, notifications de niveau et d'amélioration, touches
+//! générales (vitesse, pause, retour au menu).
 
-use bevy::{
-    prelude::*,
-    ui_widgets::{Activate, ActivateOnPress, Button},
-};
+use bevy::prelude::*;
 
 use shapez_sim::{building::BuildingKind, hub_goals::Reward, placement::SimEvent};
 
@@ -24,9 +21,7 @@ pub struct MenuPlugin;
 
 impl Plugin for MenuPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(AppState::MainMenu), spawn_menu)
-            .add_observer(start_game)
-            .add_systems(OnEnter(AppState::InGame), spawn_hud)
+        app.add_systems(OnEnter(AppState::InGame), spawn_hud)
             .add_systems(
                 Update,
                 (
@@ -42,12 +37,6 @@ impl Plugin for MenuPlugin {
 }
 
 #[derive(Component, Debug)]
-struct PlayButton;
-
-#[derive(Component, Debug)]
-struct GalleryButton;
-
-#[derive(Component, Debug)]
 struct TickText;
 
 #[derive(Component, Debug)]
@@ -61,72 +50,6 @@ struct NotificationText;
 
 #[derive(Component, Debug)]
 struct NotificationTimer(Timer);
-
-fn spawn_menu(mut commands: Commands) {
-    commands.spawn((
-        DespawnOnExit(AppState::MainMenu),
-        Node {
-            width: percent(100),
-            height: percent(100),
-            flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            row_gap: px(24),
-            ..default()
-        },
-        children![
-            (
-                Text::new("shapez-rs"),
-                TextFont {
-                    font_size: FontSize::Px(48.0),
-                    ..default()
-                },
-            ),
-            (
-                PlayButton,
-                Button,
-                ActivateOnPress,
-                Node {
-                    width: px(180),
-                    height: px(60),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-                children![Text::new("Jouer")],
-            ),
-            (
-                GalleryButton,
-                Button,
-                ActivateOnPress,
-                Node {
-                    width: px(180),
-                    height: px(48),
-                    justify_content: JustifyContent::Center,
-                    align_items: AlignItems::Center,
-                    ..default()
-                },
-                BackgroundColor(Color::srgb(0.2, 0.2, 0.25)),
-                children![Text::new("Formes")],
-            ),
-        ],
-    ));
-}
-
-fn start_game(
-    activate: On<Activate>,
-    play: Query<(), With<PlayButton>>,
-    gallery: Query<(), With<GalleryButton>>,
-    mut next: ResMut<NextState<AppState>>,
-) {
-    let target = activate.event_target();
-    if play.contains(target) {
-        next.set(AppState::InGame);
-    } else if gallery.contains(target) {
-        next.set(AppState::ShapeGallery);
-    }
-}
 
 fn spawn_hud(mut commands: Commands) {
     commands.spawn((

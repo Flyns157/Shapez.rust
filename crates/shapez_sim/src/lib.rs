@@ -26,7 +26,7 @@ use units::TICK;
 pub const TICKS_PER_SECOND: u32 = 60;
 
 /// État complet de la simulation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SimWorld {
     tick: u64,
     /// Date de jeu (`root.time.now()`), en unités de [`units::SECOND`].
@@ -41,6 +41,7 @@ pub struct SimWorld {
     pub registry: ShapeRegistry,
     /// Progression (niveau, formes livrées, améliorations, statistiques).
     pub hub: HubGoals,
+    #[serde(skip)]
     events: Vec<SimEvent>,
 }
 
@@ -153,6 +154,17 @@ impl SimWorld {
         match self.buildings.at(tile) {
             Some(id) => self.factory.inject(id, item, &self.hub.upgrades()),
             None => false,
+        }
+    }
+
+    /// Signale chaque bâtiment existant par un `BuildingPlaced`, pour que les vues
+    /// d'un monde chargé se construisent comme pendant le jeu.
+    pub fn announce_buildings(&mut self) {
+        for (id, building) in self.buildings.iter() {
+            self.events.push(SimEvent::BuildingPlaced {
+                id,
+                building: *building,
+            });
         }
     }
 

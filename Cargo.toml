@@ -15,7 +15,9 @@ publish = false
 shapez_core = { path = "crates/shapez_core" }
 shapez_sim = { path = "crates/shapez_sim" }
 shapez_render_shapes = { path = "crates/shapez_render_shapes" }
+shapez_save = { path = "crates/shapez_save" }
 slotmap = { version = "1.0", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
 bevy = { version = "0.20.1", default-features = false, features = ["2d", "ui", "audio", "png", "wav"] }
 
 [workspace.lints.rust]

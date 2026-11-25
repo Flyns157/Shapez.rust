@@ -14,7 +14,7 @@ use crate::units::Upgrades;
 use crate::upgrades::{TIER_COUNT, Tier, UpgradeKind, tiers, total_improvement};
 
 /// Récompense de fin de niveau (`enumHubGoalRewards`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Reward {
     CutterAndTrash,
     Rotater,
@@ -104,7 +104,7 @@ pub const LEVELS: [LevelDef; 26] = {
 };
 
 /// Objectif courant.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Goal {
     pub shape: ShapeId,
     pub required: u64,
@@ -121,7 +121,7 @@ pub struct LevelCompleted {
 }
 
 /// État de progression (`HubGoals`, avec `ProductionAnalytics`).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HubGoals {
     /// Niveau courant, à partir de 1.
     pub level: u32,
@@ -138,23 +138,16 @@ pub struct HubGoals {
 
 impl HubGoals {
     pub fn new(seed: u32, registry: &mut ShapeRegistry) -> Self {
-        let mut goals = Self {
+        Self {
             level: 1,
             seed,
             stored: HashMap::new(),
             gained: HashMap::new(),
-            goal: Goal {
-                shape: registry.intern(ShapeDef::EMPTY),
-                required: 0,
-                reward: Reward::None,
-                throughput_only: false,
-            },
+            goal: Self::goal_of_level(1, seed, registry),
             upgrade_levels: [0; 4],
             improvements: Upgrades::default(),
             analytics: Analytics::default(),
-        };
-        goals.compute_next_goal(registry);
-        goals
+        }
     }
 
     /// Objectif courant.
@@ -266,7 +259,11 @@ impl HubGoals {
 
     /// `computeNextGoal`.
     fn compute_next_goal(&mut self, registry: &mut ShapeRegistry) {
-        self.goal = match LEVELS.get(self.level as usize - 1) {
+        self.goal = Self::goal_of_level(self.level, self.seed, registry);
+    }
+
+    fn goal_of_level(level: u32, seed: u32, registry: &mut ShapeRegistry) -> Goal {
+        match LEVELS.get(level as usize - 1) {
             Some(def) => Goal {
                 shape: registry
                     .intern(ShapeDef::from_short_key(def.shape).expect("forme de niveau valide")),
@@ -275,12 +272,12 @@ impl HubGoals {
                 throughput_only: def.throughput_only,
             },
             None => Goal {
-                shape: registry.intern(freeplay_shape(self.seed, self.level)),
-                required: freeplay_required(self.level),
+                shape: registry.intern(freeplay_shape(seed, level)),
+                required: freeplay_required(level),
                 reward: Reward::NoRewardFreeplay,
                 throughput_only: true,
             },
-        };
+        }
     }
 
     /// `handleDefinitionDelivered` : renvoie le niveau terminé, le cas échéant.
