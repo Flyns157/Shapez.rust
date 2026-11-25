@@ -63,6 +63,8 @@ pub struct Placement {
     pub origin: TilePos,
     pub rotation: Rotation,
     pub rotation_variant: u8,
+    /// Rotation demandée par le joueur avant orientation automatique.
+    pub original_rotation: Rotation,
 }
 
 impl Placement {
@@ -73,6 +75,7 @@ impl Placement {
             origin,
             rotation,
             rotation_variant: 0,
+            original_rotation: rotation,
         }
     }
 
@@ -88,6 +91,7 @@ impl Placement {
             rotation_variant: self.rotation_variant,
             origin: self.origin,
             rotation: self.rotation,
+            original_rotation: self.original_rotation,
         }
     }
 }
@@ -105,8 +109,21 @@ pub enum SimCommand {
 /// Événement produit par la simulation, consommé par le rendu, l'audio…
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimEvent {
-    BuildingPlaced { id: BuildingId, building: Building },
-    BuildingRemoved { id: BuildingId, building: Building },
+    BuildingPlaced {
+        id: BuildingId,
+        building: Building,
+    },
+    BuildingRemoved {
+        id: BuildingId,
+        building: Building,
+    },
+    /// Convoyeur réorienté automatiquement après la pose ou la suppression d'un voisin.
+    BuildingChanged {
+        id: BuildingId,
+        building: Building,
+    },
+    /// Objectif du hub atteint.
+    LevelCompleted(crate::hub_goals::LevelCompleted),
 }
 
 /// Raison d'un refus de commande.
@@ -214,6 +231,22 @@ impl Buildings {
         }
         events.push(SimEvent::BuildingRemoved { id, building });
         building
+    }
+
+    /// Change l'orientation d'un convoyeur déjà posé (même tuile, même taille).
+    pub fn set_orientation(
+        &mut self,
+        id: BuildingId,
+        rotation: Rotation,
+        rotation_variant: u8,
+        events: &mut Vec<SimEvent>,
+    ) {
+        let building = &mut self.arena[id];
+        debug_assert_eq!(building.kind, BuildingKind::Belt);
+        building.rotation = rotation;
+        building.rotation_variant = rotation_variant;
+        let building = *building;
+        events.push(SimEvent::BuildingChanged { id, building });
     }
 
     /// `getEjectorsAndAcceptorsAtTile` : slots des voisins qui visent cette tuile.
@@ -414,6 +447,7 @@ mod tests {
             rotation_variant: variant,
             origin: TilePos::new(0, 0),
             rotation: rot,
+            original_rotation: Rotation::R0,
         };
         assert_eq!(belt.world_slots().acceptors[0].from, Direction::Left);
         assert_eq!(belt.world_slots().ejectors[0].to, Direction::Top);

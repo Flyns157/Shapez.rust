@@ -12,11 +12,22 @@ use shapez_sim::{
 use crate::{
     AppState,
     camera::{TILE_SIZE, tile_to_world},
-    sim::Sim,
+    sim::{SimEventMsg, SimEventsSet},
 };
 
-/// Profondeur des bâtiments (au-dessus des chunks et des ressources).
-const BUILDING_Z: f32 = 5.0;
+/// Profondeur des convoyeurs (au-dessus des chunks et des ressources) ; les items
+/// passent au-dessus, puis les autres bâtiments (ordre de `MapChunkView`).
+pub const BELT_Z: f32 = 5.0;
+pub const ITEM_Z: f32 = 6.0;
+const BUILDING_Z: f32 = 7.0;
+
+fn z_of(building: &Building) -> f32 {
+    if building.kind == BuildingKind::Belt {
+        BELT_Z
+    } else {
+        BUILDING_Z
+    }
+}
 
 /// Correspondance simulation → entités de rendu.
 #[derive(Resource, Debug, Default)]
@@ -29,7 +40,12 @@ impl Plugin for BuildingsViewPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BuildingEntities>()
             .add_systems(OnExit(AppState::InGame), despawn_all)
-            .add_systems(Update, sync_buildings.run_if(in_state(AppState::InGame)));
+            .add_systems(
+                Update,
+                sync_buildings
+                    .after(SimEventsSet)
+                    .run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -102,14 +118,18 @@ pub fn building_sprite(building: &Building, assets: &AssetServer, z: f32) -> (Sp
 
 fn sync_buildings(
     mut commands: Commands,
-    mut sim: ResMut<Sim>,
+    mut events: MessageReader<SimEventMsg>,
     mut entities: ResMut<BuildingEntities>,
     assets: Res<AssetServer>,
 ) {
-    for event in sim.drain_events() {
-        match event {
-            SimEvent::BuildingPlaced { id, building } => {
-                let (sprite, transform) = building_sprite(&building, &assets, BUILDING_Z);
+    for SimEventMsg(event) in events.read() {
+        match *event {
+            SimEvent::BuildingPlaced { id, building }
+            | SimEvent::BuildingChanged { id, building } => {
+                if let Some(old) = entities.0.remove(&id) {
+                    commands.entity(old).despawn();
+                }
+                let (sprite, transform) = building_sprite(&building, &assets, z_of(&building));
                 let entity = commands.spawn((sprite, transform)).id();
                 entities.0.insert(id, entity);
             }
@@ -118,6 +138,7 @@ fn sync_buildings(
                     commands.entity(entity).despawn();
                 }
             }
+            SimEvent::LevelCompleted(_) => {}
         }
     }
 }

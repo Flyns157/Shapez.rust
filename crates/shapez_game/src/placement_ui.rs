@@ -263,6 +263,7 @@ fn update_ghost(
         rotation_variant: p.rotation_variant,
         origin: p.origin,
         rotation: p.rotation,
+        original_rotation: p.original_rotation,
     };
     let (mut sprite, transform) = building_sprite(&building, &assets, 50.0);
     sprite.color = if sim.buildings.can_place(&p).is_ok() {
