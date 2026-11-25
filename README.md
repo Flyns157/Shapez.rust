@@ -35,6 +35,15 @@ cargo test --workspace
 `cargo xtask import-assets --music` importe aussi les musiques (~185 Mo). Le jeu d'origine
 est cherché dans `../shapez.io`, ou dans le dossier indiqué par `SHAPEZ_JS_ROOT`.
 
+`SHAPEZ_SANDBOX=1 cargo run` démarre les nouvelles parties en mode bac à sable : tous les
+bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le
+copier-coller.
+
+Raccourcis de construction : Ctrl+glisser sélectionne (Maj ajoute), Suppr/X supprime la
+sélection, Ctrl+C/X/V copie, coupe et colle un plan (débloqué au niveau 12, payé en formes
+de plan), R tourne le plan, Ctrl+Z/Y annule et rétablit, M pose un repère, et un clic sur
+une forme du shop l'épingle.
+
 ## Oracle JS
 
 Le code JS d'origine sert de spécification. `tools/js-oracle/` l'exécute dans Node

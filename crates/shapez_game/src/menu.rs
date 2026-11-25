@@ -243,6 +243,7 @@ fn game_keys(
     keys: Res<ButtonInput<KeyCode>>,
     placement: Res<PlacementState>,
     panel: Res<OpenPanel>,
+    editor: Res<crate::editing_ui::Editor>,
     mut speed: ResMut<GameSpeed>,
     mut next: ResMut<NextState<AppState>>,
 ) {
@@ -258,7 +259,11 @@ fn game_keys(
     }
     // Echap ferme d'abord le panneau ouvert, puis désélectionne le bâtiment en cours ;
     // sinon retour au menu.
-    if keys.just_pressed(KeyCode::Escape) && placement.selected.is_none() && !panel.is_open() {
+    if keys.just_pressed(KeyCode::Escape)
+        && placement.selected.is_none()
+        && !panel.is_open()
+        && !editor.is_busy()
+    {
         next.set(AppState::MainMenu);
     }
 }

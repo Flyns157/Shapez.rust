@@ -84,6 +84,18 @@ impl Placement {
         self
     }
 
+    /// Placement qui reproduit exactement un bâtiment existant.
+    pub fn of_building(b: &Building) -> Self {
+        Self {
+            kind: b.kind,
+            variant: b.variant,
+            origin: b.origin,
+            rotation: b.rotation,
+            rotation_variant: b.rotation_variant,
+            original_rotation: b.original_rotation,
+        }
+    }
+
     fn building(&self) -> Building {
         Building {
             kind: self.kind,

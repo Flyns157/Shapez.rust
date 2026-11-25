@@ -6,10 +6,12 @@
 pub mod analytics;
 pub mod belt_path;
 pub mod building;
+pub mod editing;
 pub mod factory;
 pub mod freeplay;
 pub mod hub_goals;
 pub mod map;
+pub mod marks;
 pub mod placement;
 pub mod units;
 pub mod unlocks;
@@ -41,6 +43,9 @@ pub struct SimWorld {
     pub registry: ShapeRegistry,
     /// Progression (niveau, formes livrées, améliorations, statistiques).
     pub hub: HubGoals,
+    /// Repères et formes épinglées (absents des sauvegardes au format 1 sans marques).
+    #[serde(default)]
+    pub marks: marks::Marks,
     #[serde(skip)]
     events: Vec<SimEvent>,
 }
@@ -64,6 +69,7 @@ impl SimWorld {
             factory: Factory::default(),
             registry,
             hub,
+            marks: marks::Marks::default(),
             events: Vec::new(),
         }
     }

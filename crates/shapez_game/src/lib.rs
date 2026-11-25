@@ -5,10 +5,12 @@ use bevy::prelude::*;
 
 pub mod buildings_view;
 pub mod camera;
+pub mod editing_ui;
 pub mod gallery;
 pub mod items_view;
 pub mod main_menu;
 pub mod map_render;
+pub mod marks_ui;
 pub mod menu;
 pub mod placement_ui;
 pub mod saves;
@@ -41,6 +43,8 @@ impl Plugin for GamePlugin {
             placement_ui::PlacementUiPlugin,
             shop::PanelsPlugin,
             saves::SavesPlugin,
+            editing_ui::EditingUiPlugin,
+            marks_ui::MarksUiPlugin,
         ))
         .add_systems(Startup, spawn_camera);
     }
