@@ -328,6 +328,9 @@ pub struct Building {
     pub rotation_variant: u8,
     pub origin: TilePos,
     pub rotation: Rotation,
+    /// Rotation choisie par le joueur, avant l'orientation automatique des convoyeurs
+    /// (`originalRotation`).
+    pub original_rotation: Rotation,
 }
 
 impl Building {
@@ -394,6 +397,7 @@ mod tests {
             rotation_variant: 0,
             origin: TilePos::new(x, y),
             rotation: rot,
+            original_rotation: rot,
         }
     }
 

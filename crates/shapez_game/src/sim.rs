@@ -1,7 +1,7 @@
 //! Pont entre Bevy et `shapez_sim` : le monde avance dans `FixedUpdate` à 60 Hz.
 
 use bevy::prelude::*;
-use shapez_sim::{SimWorld, TICKS_PER_SECOND};
+use shapez_sim::{SimWorld, TICKS_PER_SECOND, placement::SimEvent};
 
 use crate::AppState;
 
@@ -19,6 +19,14 @@ impl Default for GameSpeed {
     }
 }
 
+/// Événement de la simulation, relayé aux systèmes de rendu et d'interface.
+#[derive(Message, Debug, Clone, Copy)]
+pub struct SimEventMsg(pub SimEvent);
+
+/// Les systèmes qui lisent [`SimEventMsg`] s'exécutent après ce set.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SimEventsSet;
+
 #[derive(Debug, Default)]
 pub struct SimPlugin;
 
@@ -32,7 +40,14 @@ impl Plugin for SimPlugin {
             .add_systems(OnExit(AppState::InGame), |mut commands: Commands| {
                 commands.remove_resource::<Sim>();
             })
-            .add_systems(FixedUpdate, step_sim.run_if(in_state(AppState::InGame)));
+            .add_message::<SimEventMsg>()
+            .add_systems(FixedUpdate, step_sim.run_if(in_state(AppState::InGame)))
+            .add_systems(
+                Update,
+                forward_events
+                    .in_set(SimEventsSet)
+                    .run_if(in_state(AppState::InGame)),
+            );
     }
 }
 
@@ -50,6 +65,12 @@ fn new_game_seed() -> u32 {
         .map(|d| d.subsec_nanos())
         .unwrap_or(0);
     nanos % 100_001
+}
+
+fn forward_events(mut sim: ResMut<Sim>, mut out: MessageWriter<SimEventMsg>) {
+    for event in sim.drain_events() {
+        out.write(SimEventMsg(event));
+    }
 }
 
 /// On ne modifie jamais `dt` : accélérer revient à exécuter plusieurs ticks.
