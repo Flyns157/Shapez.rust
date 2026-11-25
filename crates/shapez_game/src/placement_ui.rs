@@ -14,6 +14,7 @@ use crate::{
     AppState,
     buildings_view::building_sprite,
     camera::{CameraSet, world_to_tile},
+    editing_ui::{EditingSet, Editor},
     shop::OpenPanel,
     sim::Sim,
 };
@@ -100,6 +101,7 @@ impl Plugin for PlacementUiPlugin {
                 )
                     .chain()
                     .after(CameraSet)
+                    .after(EditingSet)
                     .run_if(in_state(AppState::InGame)),
             );
     }
@@ -177,14 +179,21 @@ fn place_and_remove(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     panel: Res<OpenPanel>,
+    mut editor: ResMut<Editor>,
     mut sim: ResMut<Sim>,
     mut state: ResMut<PlacementState>,
 ) {
-    // Les clics vont au panneau ouvert, pas à la carte.
-    if panel.is_open() {
+    // Les clics vont au panneau ouvert ou à l'édition de masse, pas à la carte.
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    if panel.is_open() || editor.is_busy() || editor.swallow || ctrl {
         state.drag_last = None;
         return;
     }
+    // Chaque pose ou suppression rejoint l'action en cours, annulable d'un bloc.
+    let mut apply = |sim: &mut Sim, command: SimCommand| {
+        let tx = sim.apply_all([command]);
+        editor.pending.merge(tx);
+    };
     let Some(tile) = state.cursor_tile else {
         return;
     };
@@ -193,7 +202,9 @@ fn place_and_remove(
     // même image, auquel cas `pressed` est déjà faux.
     let held = |b: MouseButton| mouse.pressed(b) || mouse.just_pressed(b);
     if held(MouseButton::Right) || keys.pressed(KeyCode::KeyX) {
-        let _ = sim.apply(SimCommand::Remove { tile });
+        if sim.buildings.at(tile).is_some() {
+            apply(&mut sim, SimCommand::Remove { tile });
+        }
         state.drag_last = None;
         return;
     }
@@ -209,7 +220,7 @@ fn place_and_remove(
         .filter(|_| !mouse.just_pressed(MouseButton::Left))
     else {
         if let Some(p) = state.placement_at(&sim, tile) {
-            let _ = sim.apply(SimCommand::Place(p));
+            apply(&mut sim, SimCommand::Place(p));
         }
         state.drag_last = Some(tile);
         return;
@@ -243,12 +254,12 @@ fn place_and_remove(
                 .is_some_and(|(_, b)| b.kind == BuildingKind::Belt)
                 && let Some(p) = state.placement_at(&sim, current)
             {
-                let _ = sim.apply(SimCommand::Place(p));
+                apply(&mut sim, SimCommand::Place(p));
             }
         }
         current = current.step(dir);
         if let Some(p) = state.placement_at(&sim, current) {
-            let _ = sim.apply(SimCommand::Place(p));
+            apply(&mut sim, SimCommand::Place(p));
         }
     }
     state.drag_last = Some(tile);
@@ -315,6 +326,7 @@ fn spawn_toolbar(mut commands: Commands) {
 fn update_toolbar(
     state: Res<PlacementState>,
     sim: Res<Sim>,
+    editor: Res<Editor>,
     mut text: Single<&mut Text, With<ToolbarText>>,
 ) {
     let mut s = String::new();
@@ -330,7 +342,21 @@ fn update_toolbar(
             s.push_str(&format!("{key} {name}  "));
         }
     }
-    if let Some(kind) = state.selected {
+    if let Some(bp) = &editor.blueprint {
+        let stock = sim
+            .hub
+            .stored_by_key(shapez_sim::editing::BLUEPRINT_SHAPE, &sim.registry);
+        s.push_str(&format!(
+            "\nPlan : {} batiments, cout {} formes de plan (en stock : {stock}) - clic = poser, R = tourner, clic droit/Echap = annuler",
+            bp.len(),
+            bp.cost()
+        ));
+    } else if !editor.selection.is_empty() {
+        s.push_str(&format!(
+            "\nSelection : {} batiments - Suppr/X = supprimer, Ctrl+C = copier, Ctrl+X = couper, Echap = annuler",
+            editor.selection.len()
+        ));
+    } else if let Some(kind) = state.selected {
         let variant = current_variant(kind, state.variant_index, &sim);
         s.push_str(&format!(
             "\n{variant:?} - rotation {} (R, T = variante, Q = pipette, X/clic droit = supprimer)",
@@ -338,8 +364,11 @@ fn update_toolbar(
         ));
     } else {
         s.push_str(
-            "\nClic gauche + glisser : deplacer la carte. Q = pipette, X/clic droit = supprimer, F = ameliorations, G = statistiques",
+            "\nQ = pipette, X/clic droit = supprimer, Ctrl+glisser = selectionner, Ctrl+Z/Y = annuler/retablir, Ctrl+V = coller, M = repere, F = ameliorations, G = statistiques",
         );
+    }
+    if let Some((message, _)) = &editor.message {
+        s.push_str(&format!("\n{message}"));
     }
     if text.0 != s {
         text.0 = s;
