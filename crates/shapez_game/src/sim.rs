@@ -27,7 +27,7 @@ impl Plugin for SimPlugin {
         app.insert_resource(Time::<Fixed>::from_hz(f64::from(TICKS_PER_SECOND)))
             .init_resource::<GameSpeed>()
             .add_systems(OnEnter(AppState::InGame), |mut commands: Commands| {
-                commands.insert_resource(Sim(SimWorld::new(new_game_seed())));
+                commands.insert_resource(Sim(SimWorld::new_game(new_game_seed())));
             })
             .add_systems(OnExit(AppState::InGame), |mut commands: Commands| {
                 commands.remove_resource::<Sim>();

@@ -64,10 +64,11 @@ impl Plugin for CameraPlugin {
     }
 }
 
+/// Au départ, la caméra est centrée sur la tuile (-5, 2) comme dans `core.js`.
 fn reset_camera(mut zoom: ResMut<Zoom>, mut camera: Query<&mut Transform, With<Camera2d>>) {
     zoom.0 = 1.0;
     for mut t in &mut camera {
-        t.translation = Vec3::ZERO;
+        t.translation = tile_to_world(-5.0, 2.0).extend(0.0);
     }
 }
 

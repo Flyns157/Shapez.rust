@@ -10,6 +10,7 @@ publish.workspace = true
 
 [dependencies]
 shapez_core.workspace = true
+slotmap.workspace = true
 
 [dev-dependencies]
 serde = { version = "1", features = ["derive"] }

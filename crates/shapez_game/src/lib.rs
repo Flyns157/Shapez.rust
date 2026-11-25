@@ -3,10 +3,12 @@
 
 use bevy::prelude::*;
 
+pub mod buildings_view;
 pub mod camera;
 pub mod gallery;
 pub mod map_render;
 pub mod menu;
+pub mod placement_ui;
 pub mod shape_textures;
 pub mod sim;
 pub mod state;
@@ -25,6 +27,8 @@ impl Plugin for GamePlugin {
                 gallery::GalleryPlugin,
                 camera::CameraPlugin,
                 map_render::MapRenderPlugin,
+                buildings_view::BuildingsViewPlugin,
+                placement_ui::PlacementUiPlugin,
             ))
             .add_systems(Startup, spawn_camera);
     }
