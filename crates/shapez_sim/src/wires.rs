@@ -1,12 +1,12 @@
-//! Couche wires : réseaux de câbles, émetteurs constants, leviers et portes logiques
-//! (port de `systems/wire.js`, `systems/logic_gate.js`, `systems/lever.js` et
-//! `systems/constant_signal.js`).
+//! Couche wires : réseaux de câbles, émetteurs constants, leviers, portes logiques et
+//! processeurs virtuels (port de `systems/wire.js`, `systems/logic_gate.js`,
+//! `systems/lever.js` et `systems/constant_signal.js`).
 //!
 //! Chaque tick, dans l'ordre du JS : les émetteurs constants et les leviers écrivent
 //! leur pin, chaque réseau agrège les valeurs de ses émetteurs, puis chaque porte lit
 //! ses réseaux d'entrée et écrit sa sortie, que son réseau verra au tick suivant.
 
-use shapez_core::{Direction, Item, TilePos};
+use shapez_core::{Color, Direction, Item, ShapeDef, ShapeRegistry, TilePos};
 use slotmap::SecondaryMap;
 
 use crate::{
@@ -170,8 +170,27 @@ impl Wiring {
             .map(|&n| &self.networks[n as usize])
     }
 
+    /// Écrit la valeur d'un pin (stockage, lecteur de convoyeur).
+    pub(crate) fn set_pin(
+        &mut self,
+        id: BuildingId,
+        building: &Building,
+        pin: usize,
+        value: Option<Item>,
+    ) {
+        self.pins_mut(id, building)[pin] = value;
+    }
+
+    /// Valeur lue par un pin récepteur : celle de son réseau, s'il en a une sans
+    /// conflit (`network && network.hasValue() ? currentValue : null`).
+    pub fn input_value(&self, id: BuildingId, pin: usize) -> Option<Item> {
+        self.pin_network(id, pin)
+            .filter(|n| n.has_value())
+            .and_then(|n| n.value)
+    }
+
     /// Un tick de la couche wires.
-    pub fn tick(&mut self, buildings: &Buildings) {
+    pub fn tick(&mut self, buildings: &Buildings, registry: &mut ShapeRegistry) {
         if self.dirty {
             self.recompute(buildings);
         }
@@ -215,7 +234,11 @@ impl Wiring {
         for (id, building) in buildings.iter() {
             if !matches!(
                 building.kind,
-                BuildingKind::LogicGate | BuildingKind::Transistor
+                BuildingKind::LogicGate
+                    | BuildingKind::Transistor
+                    | BuildingKind::Analyzer
+                    | BuildingKind::Comparator
+                    | BuildingKind::VirtualProcessor
             ) {
                 continue;
             }
@@ -247,7 +270,15 @@ impl Wiring {
                 }
                 continue;
             }
-            out[0] = compute_gate(building.kind, building.variant, &inputs);
+            let results = compute_gate(building.kind, building.variant, &inputs, registry);
+            // Les résultats vont aux pins émetteurs, dans l'ordre.
+            let ejectors = out
+                .iter_mut()
+                .zip(&pins)
+                .filter(|(_, pin)| pin.kind == PinKind::Ejector);
+            for ((slot, _), value) in ejectors.zip(results) {
+                *slot = value;
+            }
         }
     }
 
@@ -411,22 +442,85 @@ impl Wiring {
     }
 }
 
-/// Calcul d'une porte (`compute_AND`, `compute_IF`…), entrées dans l'ordre des pins.
-fn compute_gate(kind: BuildingKind, variant: Variant, inputs: &[Option<Item>]) -> Option<Item> {
-    let t = |i: usize| is_truthy(inputs.get(i).copied().flatten());
+fn item(registry: &mut ShapeRegistry, def: ShapeDef) -> Option<Item> {
+    Some(Item::Shape(registry.intern(def)))
+}
+
+/// Calcul d'une porte (`compute_AND`, `compute_IF`, `compute_CUT`…), entrées dans
+/// l'ordre des pins. Renvoie les sorties dans l'ordre des pins émetteurs.
+fn compute_gate(
+    kind: BuildingKind,
+    variant: Variant,
+    inputs: &[Option<Item>],
+    registry: &mut ShapeRegistry,
+) -> [Option<Item>; 2] {
+    let input = |i: usize| inputs.get(i).copied().flatten();
+    let t = |i: usize| is_truthy(input(i));
     let bool = |b: bool| Some(Item::Bool(b));
+    let shape = |i: usize, registry: &ShapeRegistry| match input(i) {
+        Some(Item::Shape(id)) => Some(*registry.get(id)),
+        _ => None,
+    };
+    let one = |v| [v, None];
     match (kind, variant) {
-        (BuildingKind::Transistor, _) => {
-            if t(0) {
-                inputs.get(1).copied().flatten()
-            } else {
-                None
+        (BuildingKind::Transistor, _) => one(if t(0) { input(1) } else { None }),
+        (BuildingKind::Comparator, _) => one(match (input(0), input(1)) {
+            // Même type et même valeur ; des types différents donnent faux.
+            (Some(a), Some(b)) => bool(a == b),
+            _ => None,
+        }),
+        (BuildingKind::Analyzer, _) => {
+            let Some(def) = shape(0, registry) else {
+                return [None, None];
+            };
+            match def.layers().first().and_then(|l| l[0]) {
+                Some(q) => [
+                    Some(Item::Color(q.color)),
+                    item(
+                        registry,
+                        ShapeDef::simple([Some(q.sub); 4], Color::Uncolored),
+                    ),
+                ],
+                None => [None, None],
             }
         }
-        (_, Variant::Not) => bool(!t(0)),
-        (_, Variant::Or) => bool(t(0) || t(1)),
-        (_, Variant::Xor) => bool(t(0) != t(1)),
-        _ => bool(t(0) && t(1)),
+        (BuildingKind::VirtualProcessor, Variant::Rotate) => {
+            one(shape(0, registry).and_then(|d| item(registry, d.rotate_cw())))
+        }
+        (BuildingKind::VirtualProcessor, Variant::Stack) => {
+            match (shape(0, registry), shape(1, registry)) {
+                (Some(lower), Some(upper)) => one(item(registry, lower.stack(&upper))),
+                _ => [None, None],
+            }
+        }
+        (BuildingKind::VirtualProcessor, Variant::Paint) => match (shape(0, registry), input(1)) {
+            (Some(def), Some(Item::Color(c))) => one(item(registry, def.paint(c))),
+            _ => [None, None],
+        },
+        (BuildingKind::VirtualProcessor, Variant::Unstack) => {
+            let Some(def) = shape(0, registry) else {
+                return [None, None];
+            };
+            let layers = def.layers();
+            let (upper, lower) = layers.split_last().expect("forme non vide");
+            [
+                (!lower.is_empty())
+                    .then(|| item(registry, ShapeDef::from_layers(lower)))
+                    .flatten(),
+                item(registry, ShapeDef::from_layers(&[*upper])),
+            ]
+        }
+        (BuildingKind::VirtualProcessor, _) => {
+            let Some(def) = shape(0, registry) else {
+                return [None, None];
+            };
+            def.cut_half()
+                .map(|part| (!part.is_empty()).then(|| item(registry, part)).flatten())
+        }
+        (_, Variant::Not) => one(bool(!t(0))),
+        (_, Variant::Or) => one(bool(t(0) || t(1))),
+        (_, Variant::Xor) => one(bool(t(0) != t(1))),
+        _ => one(bool(t(0) && t(1))),
     }
 }
 
@@ -436,26 +530,97 @@ mod tests {
 
     #[test]
     fn gates_follow_truth_tables() {
+        let mut reg = ShapeRegistry::new();
+        let mut gate = |kind, variant, inputs: &[Option<Item>]| {
+            compute_gate(kind, variant, inputs, &mut reg)[0]
+        };
         let b = |v| Some(Item::Bool(v));
-        let and = |x, y| compute_gate(BuildingKind::LogicGate, Variant::Default, &[b(x), b(y)]);
-        assert_eq!(and(true, true), b(true));
-        assert_eq!(and(true, false), b(false));
         assert_eq!(
-            compute_gate(BuildingKind::LogicGate, Variant::Not, &[None]),
+            gate(
+                BuildingKind::LogicGate,
+                Variant::Default,
+                &[b(true), b(true)]
+            ),
+            b(true)
+        );
+        assert_eq!(
+            gate(
+                BuildingKind::LogicGate,
+                Variant::Default,
+                &[b(true), b(false)]
+            ),
+            b(false)
+        );
+        assert_eq!(
+            gate(BuildingKind::LogicGate, Variant::Not, &[None]),
             b(true)
         );
         let red = Some(Item::Color(shapez_core::Color::Red));
         assert_eq!(
-            compute_gate(BuildingKind::LogicGate, Variant::Or, &[red, b(false)]),
+            gate(BuildingKind::LogicGate, Variant::Or, &[red, b(false)]),
             b(true)
         );
         assert_eq!(
-            compute_gate(BuildingKind::Transistor, Variant::Default, &[b(true), red]),
+            gate(BuildingKind::Transistor, Variant::Default, &[b(true), red]),
             red
         );
         assert_eq!(
-            compute_gate(BuildingKind::Transistor, Variant::Default, &[b(false), red]),
+            gate(BuildingKind::Transistor, Variant::Default, &[b(false), red]),
             None
         );
+    }
+
+    #[test]
+    fn virtual_processors_follow_the_js() {
+        let mut reg = ShapeRegistry::new();
+        let mut shape = |key: &str| {
+            Some(Item::Shape(
+                reg.intern(ShapeDef::from_short_key(key).unwrap()),
+            ))
+        };
+        let (two_layers, half, red) = (
+            shape("CrRg----:Sw------"),
+            shape("Cu------"),
+            Some(Item::Color(Color::Red)),
+        );
+        let key = |reg: &ShapeRegistry, v: Option<Item>| match v {
+            Some(Item::Shape(id)) => reg.get(id).short_key(),
+            other => format!("{other:?}"),
+        };
+        let mut run = |kind, variant, inputs: &[Option<Item>]| {
+            let out = compute_gate(kind, variant, inputs, &mut reg);
+            [key(&reg, out[0]), key(&reg, out[1])]
+        };
+        use BuildingKind::{Analyzer, Comparator, VirtualProcessor as Vp};
+        assert_eq!(
+            run(Analyzer, Variant::Default, &[two_layers]),
+            ["Some(Color(Red))", "CuCuCuCu"]
+        );
+        assert_eq!(run(Analyzer, Variant::Default, &[red]), ["None", "None"]);
+        assert_eq!(
+            run(Vp, Variant::Default, &[two_layers]),
+            ["None", "CrRg----:Sw------"]
+        );
+        assert_eq!(
+            run(Vp, Variant::Unstack, &[two_layers]),
+            ["CrRg----", "Sw------"]
+        );
+        assert_eq!(run(Vp, Variant::Unstack, &[half]), ["None", "Cu------"]);
+        assert_eq!(run(Vp, Variant::Rotate, &[half]), ["--Cu----", "None"]);
+        assert_eq!(run(Vp, Variant::Paint, &[half, red]), ["Cr------", "None"]);
+        assert_eq!(run(Vp, Variant::Paint, &[red, half]), ["None", "None"]);
+        assert_eq!(
+            run(Vp, Variant::Stack, &[half, half])[0],
+            "Cu------:Cu------"
+        );
+        assert_eq!(
+            run(Comparator, Variant::Default, &[half, half])[0],
+            "Some(Bool(true))"
+        );
+        assert_eq!(
+            run(Comparator, Variant::Default, &[half, red])[0],
+            "Some(Bool(false))"
+        );
+        assert_eq!(run(Comparator, Variant::Default, &[None, red])[0], "None");
     }
 }

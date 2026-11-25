@@ -130,6 +130,10 @@ fn variant_suffix(variant: Variant) -> Option<&'static str> {
         Variant::Mirrored => "mirrored",
         Variant::Double => "double",
         Variant::Chainable => "chainable",
+        Variant::Rotate => "rotater",
+        Variant::Stack => "stacker",
+        Variant::Paint => "painter",
+        Variant::Unstack => "unstacker",
     })
 }
 
@@ -163,10 +167,10 @@ pub fn direction_angle(direction: Direction) -> f32 {
     -(f32::from(direction.to_rotation().degrees())).to_radians()
 }
 
-/// Pins dessinés par le bâtiment lui-même (`getRenderPins`) : seuls ceux du levier
-/// parmi les bâtiments actuels, les portes les ont dans leur sprite.
+/// Pins dessinés à part (`getRenderPins`) : ceux des bâtiments de la couche normale ;
+/// les bâtiments de la couche wires les ont dans leur sprite.
 fn renders_pins(kind: BuildingKind) -> bool {
-    matches!(kind, BuildingKind::Lever)
+    kind.layer() == Layer::Regular
 }
 
 fn sync_buildings(

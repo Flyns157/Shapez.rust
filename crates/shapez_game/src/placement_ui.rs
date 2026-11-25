@@ -25,7 +25,7 @@ use crate::{
 pub type ToolbarEntry = (KeyCode, &'static str, BuildingKind, &'static str);
 
 /// Barre de la couche normale (`HUDBuildingsToolbar`, touches du JS).
-pub const REGULAR_TOOLBAR: [ToolbarEntry; 12] = [
+pub const REGULAR_TOOLBAR: [ToolbarEntry; 15] = [
     (KeyCode::Digit1, "1", BuildingKind::Belt, "Convoyeur"),
     (KeyCode::Digit2, "2", BuildingKind::Balancer, "Equilibreur"),
     (
@@ -42,11 +42,14 @@ pub const REGULAR_TOOLBAR: [ToolbarEntry; 12] = [
     (KeyCode::Digit9, "9", BuildingKind::Painter, "Peintre"),
     (KeyCode::Digit0, "0", BuildingKind::Trash, "Poubelle"),
     (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
+    (KeyCode::KeyU, "U", BuildingKind::Reader, "Lecteur"),
     (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
+    (KeyCode::KeyO, "O", BuildingKind::Filter, "Filtre"),
+    (KeyCode::KeyP, "P", BuildingKind::Display, "Afficheur"),
 ];
 
 /// Barre de la couche wires (`HUDWiresToolbar`).
-pub const WIRES_TOOLBAR: [ToolbarEntry; 7] = [
+pub const WIRES_TOOLBAR: [ToolbarEntry; 13] = [
     (KeyCode::Digit1, "1", BuildingKind::Wire, "Cable"),
     (KeyCode::Digit2, "2", BuildingKind::WireTunnel, "Croisement"),
     (
@@ -61,9 +64,25 @@ pub const WIRES_TOOLBAR: [ToolbarEntry; 7] = [
         BuildingKind::LogicGate,
         "Porte logique",
     ),
+    (
+        KeyCode::Digit5,
+        "5",
+        BuildingKind::VirtualProcessor,
+        "Processeur virtuel",
+    ),
+    (KeyCode::Digit6, "6", BuildingKind::Analyzer, "Analyseur"),
+    (
+        KeyCode::Digit7,
+        "7",
+        BuildingKind::Comparator,
+        "Comparateur",
+    ),
     (KeyCode::Digit8, "8", BuildingKind::Transistor, "Transistor"),
     (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
+    (KeyCode::KeyU, "U", BuildingKind::Reader, "Lecteur"),
     (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
+    (KeyCode::KeyO, "O", BuildingKind::Filter, "Filtre"),
+    (KeyCode::KeyP, "P", BuildingKind::Display, "Afficheur"),
 ];
 
 /// Barre d'outils de la couche.

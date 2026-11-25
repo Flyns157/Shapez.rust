@@ -228,6 +228,8 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 | Changer de couche (normale, câbles) | E (couche câbles débloquée en terminant le niveau 20) |
 | Basculer un levier | clic sur le levier |
 | Changer le signal d'un émetteur constant | clic dessus sur la couche câbles (Maj : en arrière) |
+| Lecteur, filtre, afficheur | U, O, P (couche normale ou câbles) |
+| Processeur virtuel, analyseur, comparateur | 5, 6, 7 sur la couche câbles (T : variante du processeur) |
 
 ### 6. Lancer les tests
 
@@ -326,7 +328,7 @@ node tools/js-oracle/rng.mjs > crates/shapez_core/tests/golden/alea.json
 node tools/js-oracle/map.mjs > crates/shapez_sim/tests/golden/map.json                   # chunks (-15..15)², 3 graines
 node tools/js-oracle/belts.mjs > crates/shapez_sim/tests/golden/belts.json               # 100 chemins de convoyeurs
 node tools/js-oracle/progression.mjs > crates/shapez_sim/tests/golden/progression.json   # paliers et freeplay
-node tools/js-oracle/wires.mjs 50 > crates/shapez_sim/tests/golden/wires.json             # 50 circuits de câbles
+node tools/js-oracle/wires.mjs 80 > crates/shapez_sim/tests/golden/wires.json             # 80 circuits de câbles et processeurs virtuels
 ```
 
 Vérifier un jeu de cas plus grand, sans le versionner :

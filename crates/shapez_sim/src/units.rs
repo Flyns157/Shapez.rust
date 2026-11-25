@@ -45,6 +45,8 @@ pub enum ProcessorKind {
     PainterDouble,
     PainterQuad,
     Hub,
+    /// Lecteur de convoyeur : laisse passer les items à la vitesse des convoyeurs.
+    Reader,
 }
 
 /// Multiplicateurs des quatre familles d'améliorations (`upgradeImprovements`),
@@ -94,6 +96,7 @@ impl Upgrades {
         let (improvement, divisor) = match kind {
             Trash | Hub => return 0,
             Balancer => (self.belt * 2, 1),
+            Reader => (self.belt, 1),
             Cutter | CutterQuad => (self.processors, 4),
             Rotater | RotaterCcw | Rotater180 => (self.processors, 1),
             Stacker => (self.processors, 8),

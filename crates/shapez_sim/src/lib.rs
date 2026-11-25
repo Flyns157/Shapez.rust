@@ -242,12 +242,15 @@ impl SimWorld {
             map: &mut self.map,
             registry: &mut self.registry,
             hub: &mut self.hub,
+            wiring: &mut self.wiring,
             upgrades,
             now: self.time,
             events: &mut self.events,
         };
         self.factory.tick(&mut ctx);
-        self.wiring.tick(&self.buildings);
+        self.wiring.tick(&self.buildings, &mut self.registry);
+        self.factory
+            .update_readers(&self.buildings, &mut self.wiring, self.time);
         self.time += TICK;
         self.tick += 1;
         self.hub.update_analytics(self.time);
