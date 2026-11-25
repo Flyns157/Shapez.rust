@@ -1,18 +1,19 @@
-//! Bâtiments posés sur la carte : arène, grille d'occupation, commandes de placement
-//! et de suppression, orientation automatique des convoyeurs et tunnels.
+//! Bâtiments posés sur la carte : arène, grilles d'occupation (une par couche),
+//! commandes de placement et de suppression, orientation automatique des convoyeurs,
+//! tunnels et câbles.
 //!
 //! Toute mutation passe par une [`SimCommand`] (plan, §3.4) ; les bâtiments vivent
 //! dans une arène à index générationnels (plan, §3.3).
 
 use std::collections::HashMap;
 
-use shapez_core::{Direction, Rotation, TilePos};
+use shapez_core::{Direction, Item, Rotation, TilePos};
 use slotmap::{SlotMap, new_key_type};
 
 use crate::{
     building::{
-        AcceptorSlot, Building, BuildingKind, EjectorSlot, Variant, belt_variant, tunnel_range,
-        tunnel_variant,
+        AcceptorSlot, Building, BuildingKind, EjectorSlot, Layer, Variant, belt_variant,
+        tunnel_range, tunnel_variant, wire_type,
     },
     map::{CHUNK_SIZE, ChunkPos},
 };
@@ -25,7 +26,7 @@ new_key_type! {
 
 type ChunkGrid = [[Option<BuildingId>; CHUNK_SIZE as usize]; CHUNK_SIZE as usize];
 
-/// Grille d'occupation de la couche normale, par chunk (les wires viendront en M8).
+/// Grille d'occupation d'une couche, par chunk.
 #[derive(Debug, Clone, Default)]
 pub struct OccupancyGrid {
     chunks: HashMap<ChunkPos, Box<ChunkGrid>>,
@@ -65,6 +66,8 @@ pub struct Placement {
     pub rotation_variant: u8,
     /// Rotation demandée par le joueur avant orientation automatique.
     pub original_rotation: Rotation,
+    /// Réglage du bâtiment (voir [`Building::config`]).
+    pub config: Option<Item>,
 }
 
 impl Placement {
@@ -76,11 +79,17 @@ impl Placement {
             rotation,
             rotation_variant: 0,
             original_rotation: rotation,
+            config: None,
         }
     }
 
     pub fn with_variant(mut self, variant: Variant) -> Self {
         self.variant = variant;
+        self
+    }
+
+    pub fn with_config(mut self, config: Option<Item>) -> Self {
+        self.config = config;
         self
     }
 
@@ -93,10 +102,12 @@ impl Placement {
             rotation: b.rotation,
             rotation_variant: b.rotation_variant,
             original_rotation: b.original_rotation,
+            config: b.config,
         }
     }
 
-    fn building(&self) -> Building {
+    /// Bâtiment tel qu'il serait posé (aperçu).
+    pub fn building(&self) -> Building {
         Building {
             kind: self.kind,
             variant: self.variant,
@@ -104,6 +115,7 @@ impl Placement {
             origin: self.origin,
             rotation: self.rotation,
             original_rotation: self.original_rotation,
+            config: self.config,
         }
     }
 }
@@ -112,9 +124,16 @@ impl Placement {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SimCommand {
     Place(Placement),
-    /// Supprime le bâtiment qui occupe la tuile.
+    /// Supprime le bâtiment qui occupe la tuile sur cette couche.
     Remove {
         tile: TilePos,
+        layer: Layer,
+    },
+    /// Change le réglage d'un émetteur constant ou d'un levier.
+    Configure {
+        tile: TilePos,
+        layer: Layer,
+        config: Option<Item>,
     },
     /// Achète le prochain palier d'une famille d'améliorations.
     UnlockUpgrade(crate::upgrades::UpgradeKind),
@@ -131,7 +150,8 @@ pub enum SimEvent {
         id: BuildingId,
         building: Building,
     },
-    /// Convoyeur réorienté automatiquement après la pose ou la suppression d'un voisin.
+    /// Convoyeur ou câble réorienté automatiquement après la pose ou la suppression
+    /// d'un voisin, ou réglage modifié.
     BuildingChanged {
         id: BuildingId,
         building: Building,
@@ -158,16 +178,21 @@ pub enum CommandError {
     NotRemovable,
     /// Pas assez de formes en stock pour ce palier (ou palier maximal atteint).
     CannotAfford,
+    /// Ce bâtiment n'a pas de réglage.
+    NotConfigurable,
 }
 
-/// Bâtiments du monde et leur occupation de la grille.
+/// Bâtiments du monde et leur occupation des grilles.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 #[serde(from = "BuildingsData")]
 pub struct Buildings {
     arena: SlotMap<BuildingId, Building>,
-    /// Déduite de l'arène, reconstruite au chargement.
+    /// Couche normale ; déduite de l'arène, reconstruite au chargement.
     #[serde(skip)]
     grid: OccupancyGrid,
+    /// Couche wires.
+    #[serde(skip)]
+    wires_grid: OccupancyGrid,
 }
 
 /// Forme sérialisée de [`Buildings`] : l'arène seule.
@@ -178,16 +203,19 @@ struct BuildingsData {
 
 impl From<BuildingsData> for Buildings {
     fn from(data: BuildingsData) -> Self {
-        let mut grid = OccupancyGrid::default();
-        for (id, building) in &data.arena {
+        let mut buildings = Self {
+            arena: data.arena,
+            ..Self::default()
+        };
+        let all: Vec<_> = buildings.arena.iter().map(|(id, b)| (id, *b)).collect();
+        for (id, building) in all {
             for tile in building.tiles() {
-                grid.set(tile, Some(id));
+                buildings
+                    .grid_mut(building.kind.layer())
+                    .set(tile, Some(id));
             }
         }
-        Self {
-            arena: data.arena,
-            grid,
-        }
+        buildings
     }
 }
 
@@ -196,13 +224,48 @@ impl Buildings {
         self.arena.get(id)
     }
 
+    fn grid(&self, layer: Layer) -> &OccupancyGrid {
+        match layer {
+            Layer::Regular => &self.grid,
+            Layer::Wires => &self.wires_grid,
+        }
+    }
+
+    fn grid_mut(&mut self, layer: Layer) -> &mut OccupancyGrid {
+        match layer {
+            Layer::Regular => &mut self.grid,
+            Layer::Wires => &mut self.wires_grid,
+        }
+    }
+
+    /// Bâtiment de la couche normale sur cette tuile.
     pub fn at(&self, tile: TilePos) -> Option<BuildingId> {
         self.grid.get(tile)
     }
 
     pub fn building_at(&self, tile: TilePos) -> Option<(BuildingId, &Building)> {
-        let id = self.grid.get(tile)?;
+        self.building_at_layer(tile, Layer::Regular)
+    }
+
+    pub fn at_layer(&self, tile: TilePos, layer: Layer) -> Option<BuildingId> {
+        self.grid(layer).get(tile)
+    }
+
+    pub fn building_at_layer(
+        &self,
+        tile: TilePos,
+        layer: Layer,
+    ) -> Option<(BuildingId, &Building)> {
+        let id = self.grid(layer).get(tile)?;
         Some((id, &self.arena[id]))
+    }
+
+    /// Bâtiments des deux couches sur cette tuile, couche normale d'abord
+    /// (`getLayersContentsMultipleXY`).
+    pub fn contents_at(&self, tile: TilePos) -> impl Iterator<Item = BuildingId> + '_ {
+        [self.grid.get(tile), self.wires_grid.get(tile)]
+            .into_iter()
+            .flatten()
     }
 
     /// Bâtiments dans l'ordre des slots de l'arène (déterministe).
@@ -223,8 +286,9 @@ impl Buildings {
         if !placement.kind.has_variant(placement.variant) {
             return Err(CommandError::InvalidVariant);
         }
+        let layer = placement.kind.layer();
         for tile in placement.building().tiles() {
-            if let Some((_, other)) = self.building_at(tile)
+            if let Some((_, other)) = self.building_at_layer(tile, layer)
                 && !other.kind.is_replaceable()
             {
                 return Err(CommandError::Blocked { tile });
@@ -241,14 +305,15 @@ impl Buildings {
     ) -> Result<BuildingId, CommandError> {
         self.can_place(&placement)?;
         let building = placement.building();
+        let layer = building.kind.layer();
         for tile in building.tiles() {
-            if let Some(old) = self.grid.get(tile) {
+            if let Some(old) = self.grid(layer).get(tile) {
                 self.remove_id(old, events);
             }
         }
         let id = self.arena.insert(building);
         for tile in building.tiles() {
-            self.grid.set(tile, Some(id));
+            self.grid_mut(layer).set(tile, Some(id));
         }
         events.push(SimEvent::BuildingPlaced { id, building });
         Ok(id)
@@ -258,9 +323,12 @@ impl Buildings {
     pub fn remove_at(
         &mut self,
         tile: TilePos,
+        layer: Layer,
         events: &mut Vec<SimEvent>,
     ) -> Result<Building, CommandError> {
-        let (id, building) = self.building_at(tile).ok_or(CommandError::NothingThere)?;
+        let (id, building) = self
+            .building_at_layer(tile, layer)
+            .ok_or(CommandError::NothingThere)?;
         if !building.kind.is_removable() {
             return Err(CommandError::NotRemovable);
         }
@@ -269,16 +337,18 @@ impl Buildings {
 
     fn remove_id(&mut self, id: BuildingId, events: &mut Vec<SimEvent>) -> Building {
         let building = self.arena.remove(id).expect("identifiant valide");
+        let grid = self.grid_mut(building.kind.layer());
         for tile in building.tiles() {
-            if self.grid.get(tile) == Some(id) {
-                self.grid.set(tile, None);
+            if grid.get(tile) == Some(id) {
+                grid.set(tile, None);
             }
         }
         events.push(SimEvent::BuildingRemoved { id, building });
         building
     }
 
-    /// Change l'orientation d'un convoyeur déjà posé (même tuile, même taille).
+    /// Change l'orientation d'un convoyeur ou d'un câble déjà posé (même tuile, même
+    /// taille).
     pub fn set_orientation(
         &mut self,
         id: BuildingId,
@@ -287,11 +357,83 @@ impl Buildings {
         events: &mut Vec<SimEvent>,
     ) {
         let building = &mut self.arena[id];
-        debug_assert_eq!(building.kind, BuildingKind::Belt);
+        debug_assert!(matches!(
+            building.kind,
+            BuildingKind::Belt | BuildingKind::Wire
+        ));
         building.rotation = rotation;
         building.rotation_variant = rotation_variant;
         let building = *building;
         events.push(SimEvent::BuildingChanged { id, building });
+    }
+
+    /// Change le réglage d'un émetteur constant ou d'un levier.
+    pub fn set_config(
+        &mut self,
+        tile: TilePos,
+        layer: Layer,
+        config: Option<Item>,
+        events: &mut Vec<SimEvent>,
+    ) -> Result<(), CommandError> {
+        let id = self
+            .at_layer(tile, layer)
+            .ok_or(CommandError::NothingThere)?;
+        let building = &mut self.arena[id];
+        if !building.kind.is_configurable() {
+            return Err(CommandError::NotConfigurable);
+        }
+        building.config = config;
+        let building = *building;
+        events.push(SimEvent::BuildingChanged { id, building });
+        Ok(())
+    }
+
+    /// `logic.computeWireEdgeStatus` : un câble de cette couleur posé en `tile`
+    /// se relierait-il à la tuile voisine du côté `edge` ?
+    fn wire_edge(&self, tile: TilePos, variant: Variant, edge: Direction) -> bool {
+        let target = tile.step(edge);
+        for id in self.contents_at(target) {
+            let other = &self.arena[id];
+            if other
+                .world_pins()
+                .iter()
+                .any(|p| p.pos == target && p.direction == edge.inverted())
+            {
+                return true;
+            }
+        }
+        match self.building_at_layer(target, Layer::Wires) {
+            Some((_, other)) => match other.kind {
+                BuildingKind::WireTunnel => true,
+                BuildingKind::Wire => other.variant == variant,
+                _ => false,
+            },
+            None => false,
+        }
+    }
+
+    /// Orientation automatique d'un câble : forme et rotation selon ses voisins
+    /// (`MetaWireBuilding.computeOptimalDirectionAndRotationVariantAtTile`).
+    pub fn optimal_wire(&self, tile: TilePos, variant: Variant) -> (Rotation, u8) {
+        use Direction::{Bottom, Left, Right, Top};
+        let edge = |d| self.wire_edge(tile, variant, d);
+        let (top, right, bottom, left) = (edge(Top), edge(Right), edge(Bottom), edge(Left));
+        use Rotation::{R0, R90, R180, R270};
+        use wire_type::{CROSS, FORWARD, SPLIT, TURN};
+        match (top, right, bottom, left) {
+            (false, false, false, true) => (R90, FORWARD),
+            (false, false, true, true) => (R90, TURN),
+            (false, true, false, _) => (R90, FORWARD),
+            (false, true, true, false) => (R0, TURN),
+            (false, true, true, true) => (R0, SPLIT),
+            (true, false, false, true) => (R180, TURN),
+            (true, false, true, true) => (R90, SPLIT),
+            (true, true, false, false) => (R270, TURN),
+            (true, true, false, true) => (R180, SPLIT),
+            (true, true, true, false) => (R270, SPLIT),
+            (true, true, true, true) => (R0, CROSS),
+            _ => (R0, FORWARD),
+        }
     }
 
     /// `getEjectorsAndAcceptorsAtTile` : slots des voisins qui visent cette tuile.
@@ -454,7 +596,8 @@ mod tests {
         let p = Placement::new(BuildingKind::Storage, TilePos::new(-3, -3), Rotation::R90);
         let id = place(&mut b, p).unwrap();
         let tiles: Vec<_> = b.get(id).unwrap().tiles().collect();
-        b.remove_at(tiles[3], &mut Vec::new()).unwrap();
+        b.remove_at(tiles[3], Layer::Regular, &mut Vec::new())
+            .unwrap();
         assert!(tiles.iter().all(|t| b.at(*t).is_none()));
         let new = place(&mut b, p).unwrap();
         assert_ne!(new, id);
@@ -470,7 +613,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            b.remove_at(TilePos::new(0, 0), &mut Vec::new()),
+            b.remove_at(TilePos::new(0, 0), Layer::Regular, &mut Vec::new()),
             Err(CommandError::NotRemovable)
         );
     }
@@ -493,6 +636,7 @@ mod tests {
             origin: TilePos::new(0, 0),
             rotation: rot,
             original_rotation: Rotation::R0,
+            config: None,
         };
         assert_eq!(belt.world_slots().acceptors[0].from, Direction::Left);
         assert_eq!(belt.world_slots().ejectors[0].to, Direction::Top);

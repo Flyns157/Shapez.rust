@@ -21,6 +21,9 @@ pub fn is_unlocked(kind: BuildingKind, hub: &HubGoals) -> bool {
         Mixer => Reward::Mixer,
         Stacker => Reward::Stacker,
         Storage => Reward::Storage,
+        Wire | WireTunnel | Lever => Reward::WiresPainterAndLevers,
+        ConstantSignal => Reward::ConstantSignal,
+        LogicGate | Transistor => Reward::LogicGates,
     };
     hub.is_reward_unlocked(reward)
 }
@@ -77,6 +80,9 @@ pub fn available_variants(kind: BuildingKind, hub: &HubGoals) -> Vec<Variant> {
         } else {
             Default
         }),
+        BuildingKind::Wire | BuildingKind::LogicGate | BuildingKind::Transistor => {
+            out.extend_from_slice(kind.variants())
+        }
         _ => out.push(Default),
     }
     out

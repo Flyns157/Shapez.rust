@@ -3,11 +3,15 @@
 
 use bevy::prelude::*;
 
-use shapez_sim::{building::BuildingKind, hub_goals::Reward, placement::SimEvent};
+use shapez_sim::{
+    building::{BuildingKind, Layer},
+    hub_goals::Reward,
+    placement::SimEvent,
+};
 
 use crate::{
     AppState,
-    placement_ui::{PlacementState, TOOLBAR},
+    placement_ui::{PlacementState, toolbar_entry},
     shape_textures::ShapeTextures,
     shop::{OpenPanel, upgrade_name},
     sim::{GameSpeed, Sim, SimEventMsg, SimEventsSet},
@@ -188,13 +192,26 @@ fn unlocked_buildings(reward: Reward) -> Vec<String> {
         Reward::Stacker => &[BuildingKind::Stacker],
         Reward::Balancer => &[BuildingKind::Balancer],
         Reward::Tunnel => &[BuildingKind::UndergroundBelt],
+        Reward::Storage => &[BuildingKind::Storage],
+        Reward::WiresPainterAndLevers => &[
+            BuildingKind::Wire,
+            BuildingKind::WireTunnel,
+            BuildingKind::Lever,
+        ],
+        Reward::ConstantSignal => &[BuildingKind::ConstantSignal],
+        Reward::LogicGates => &[BuildingKind::LogicGate, BuildingKind::Transistor],
         _ => &[],
     };
     kinds
         .iter()
-        .filter_map(|kind| {
-            let i = TOOLBAR.iter().position(|(_, k, _)| k == kind)?;
-            Some(format!("{} (touche {})", TOOLBAR[i].2, (i + 1) % 10))
+        .filter_map(|&kind| {
+            let (key, name) = toolbar_entry(kind)?;
+            let layer = if kind.layer() == Layer::Wires {
+                ", couche cables (E)"
+            } else {
+                ""
+            };
+            Some(format!("{name} (touche {key}{layer})"))
         })
         .collect()
 }

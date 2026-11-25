@@ -8,7 +8,7 @@ use shapez_core::{Rotation, TilePos};
 
 use crate::{
     SimWorld,
-    building::Building,
+    building::{Building, Layer},
     hub_goals::Reward,
     placement::{BuildingId, CommandError, Placement, SimCommand, SimEvent},
     upgrades::find_nice_integer_value,
@@ -89,9 +89,11 @@ impl SimWorld {
     pub fn revert(&mut self, tx: &Transaction) -> Transaction {
         let mut commands = Vec::new();
         for (id, building) in &tx.placed {
-            if self.buildings.at(building.origin) == Some(*id) {
+            let layer = building.kind.layer();
+            if self.buildings.at_layer(building.origin, layer) == Some(*id) {
                 commands.push(SimCommand::Remove {
                     tile: building.origin,
+                    layer,
                 });
             }
         }
@@ -101,15 +103,16 @@ impl SimWorld {
         self.apply_all(commands)
     }
 
-    /// Bâtiments supprimables touchant le rectangle `a`–`b` (bornes incluses).
-    pub fn buildings_in_rect(&self, a: TilePos, b: TilePos) -> Vec<BuildingId> {
+    /// Bâtiments supprimables d'une couche touchant le rectangle `a`–`b` (bornes
+    /// incluses).
+    pub fn buildings_in_rect(&self, a: TilePos, b: TilePos, layer: Layer) -> Vec<BuildingId> {
         let (min, max) = (
             TilePos::new(a.x.min(b.x), a.y.min(b.y)),
             TilePos::new(a.x.max(b.x), a.y.max(b.y)),
         );
         self.buildings
             .iter()
-            .filter(|(_, building)| building.kind.is_removable())
+            .filter(|(_, building)| building.kind.is_removable() && building.kind.layer() == layer)
             .filter(|(_, building)| {
                 let (lo, (w, h)) = building.bounds();
                 lo.x <= max.x && lo.x + w > min.x && lo.y <= max.y && lo.y + h > min.y
@@ -123,7 +126,10 @@ impl SimWorld {
         let commands: Vec<SimCommand> = ids
             .iter()
             .filter_map(|&id| self.buildings.get(id))
-            .map(|b| SimCommand::Remove { tile: b.origin })
+            .map(|b| SimCommand::Remove {
+                tile: b.origin,
+                layer: b.kind.layer(),
+            })
             .collect();
         self.apply_all(commands)
     }

@@ -44,6 +44,10 @@ sélection, Ctrl+C/X/V copie, coupe et colle un plan (débloqué au niveau 12, p
 de plan), R tourne le plan, Ctrl+Z/Y annule et rétablit, M pose un repère, et un clic sur
 une forme du shop l'épingle.
 
+Couche câbles (débloquée au niveau 20) : E bascule entre la couche normale et la couche
+câbles. Un clic sur un levier le bascule ; sur la couche câbles, un clic sur un émetteur
+constant fait défiler son signal (Maj : en arrière).
+
 ## Oracle JS
 
 Le code JS d'origine sert de spécification. `tools/js-oracle/` l'exécute dans Node
@@ -60,6 +64,7 @@ node tools/js-oracle/shapes.mjs 10000 > /tmp/shapes.json
 SHAPEZ_GOLDEN_SHAPES=/tmp/shapes.json cargo test -p shapez_core --test golden_shapes
 node tools/js-oracle/belts.mjs 1500 > /tmp/belts.json
 SHAPEZ_GOLDEN_BELTS=/tmp/belts.json cargo test -p shapez_sim --test golden_belts
+node tools/js-oracle/wires.mjs 50 > crates/shapez_sim/tests/golden/wires.json
 ```
 
 ## Licence

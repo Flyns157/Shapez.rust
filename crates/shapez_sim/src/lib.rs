@@ -16,8 +16,9 @@ pub mod placement;
 pub mod units;
 pub mod unlocks;
 pub mod upgrades;
+pub mod wires;
 
-use building::{Building, BuildingKind};
+use building::{Building, BuildingKind, Layer};
 use factory::{Factory, TickContext};
 use hub_goals::HubGoals;
 use placement::{BuildingId, Buildings, CommandError, Placement, SimCommand, SimEvent};
@@ -46,6 +47,9 @@ pub struct SimWorld {
     /// Repères et formes épinglées (absents des sauvegardes au format 1 sans marques).
     #[serde(default)]
     pub marks: marks::Marks,
+    /// Couche wires : valeurs des pins et réseaux.
+    #[serde(default)]
+    pub wiring: wires::Wiring,
     #[serde(skip)]
     events: Vec<SimEvent>,
 }
@@ -70,6 +74,7 @@ impl SimWorld {
             registry,
             hub,
             marks: marks::Marks::default(),
+            wiring: wires::Wiring::default(),
             events: Vec::new(),
         }
     }
@@ -89,9 +94,17 @@ impl SimWorld {
         let start = self.events.len();
         let result = match command {
             SimCommand::Place(p) => self.buildings.place(p, &mut self.events).map(Some),
-            SimCommand::Remove { tile } => self
+            SimCommand::Remove { tile, layer } => self
                 .buildings
-                .remove_at(tile, &mut self.events)
+                .remove_at(tile, layer, &mut self.events)
+                .map(|_| None),
+            SimCommand::Configure {
+                tile,
+                layer,
+                config,
+            } => self
+                .buildings
+                .set_config(tile, layer, config, &mut self.events)
                 .map(|_| None),
             SimCommand::UnlockUpgrade(kind) => {
                 if self.hub.try_unlock_upgrade(kind, &self.registry) {
@@ -111,11 +124,15 @@ impl SimWorld {
             match self.events[i] {
                 SimEvent::BuildingPlaced { id, building } => {
                     self.factory.on_added(id, &self.buildings);
+                    self.wiring.on_added(id, &building);
                     self.update_surrounding_belts(&building);
+                    self.update_surrounding_wires(&building);
                 }
                 SimEvent::BuildingRemoved { id, building } => {
                     self.factory.on_removed(id, &building, &self.buildings);
+                    self.wiring.on_removed(id, &building);
                     self.update_surrounding_belts(&building);
+                    self.update_surrounding_wires(&building);
                 }
                 _ => {}
             }
@@ -153,6 +170,34 @@ impl SimWorld {
             }
         }
         self.factory.notify_paths_of(&touched, &self.buildings);
+    }
+
+    /// `WireSystem.updateSurroundingWirePlacement` : redonne leur forme aux câbles du
+    /// bâtiment posé ou supprimé et de ses voisins.
+    fn update_surrounding_wires(&mut self, building: &Building) {
+        let relevant = matches!(building.kind, BuildingKind::Wire | BuildingKind::WireTunnel)
+            || !building.world_pins().is_empty();
+        if !relevant {
+            return;
+        }
+        let (min, (w, h)) = building.bounds();
+        for x in min.x - 1..=min.x + w {
+            for y in min.y - 1..=min.y + h {
+                let tile = TilePos::new(x, y);
+                let Some((id, wire)) = self.buildings.building_at_layer(tile, Layer::Wires) else {
+                    continue;
+                };
+                if wire.kind != BuildingKind::Wire {
+                    continue;
+                }
+                let wire = *wire;
+                let (rotation, shape) = self.buildings.optimal_wire(tile, wire.variant);
+                if rotation != wire.rotation || shape != wire.rotation_variant {
+                    self.buildings
+                        .set_orientation(id, rotation, shape, &mut self.events);
+                }
+            }
+        }
     }
 
     /// Dépose un item au début du chemin du convoyeur posé sur `tile`.
@@ -202,6 +247,7 @@ impl SimWorld {
             events: &mut self.events,
         };
         self.factory.tick(&mut ctx);
+        self.wiring.tick(&self.buildings);
         self.time += TICK;
         self.tick += 1;
         self.hub.update_analytics(self.time);
@@ -242,6 +288,7 @@ mod tests {
         world
             .apply(SimCommand::Remove {
                 tile: TilePos::new(5, 5),
+                layer: Layer::Regular,
             })
             .unwrap();
         assert_eq!(world.buildings.len(), 0);
