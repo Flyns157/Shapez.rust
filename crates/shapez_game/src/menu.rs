@@ -1,15 +1,18 @@
-//! Menu principal minimal et écran de jeu provisoire (affiche le compteur de ticks).
+//! Menu principal minimal et HUD de jeu : objectif du hub, notifications de niveau et
+//! d'amélioration.
 
 use bevy::{
     prelude::*,
     ui_widgets::{Activate, ActivateOnPress, Button},
 };
 
-use shapez_sim::{hub_goals::Reward, placement::SimEvent};
+use shapez_sim::{building::BuildingKind, hub_goals::Reward, placement::SimEvent};
 
 use crate::{
     AppState,
-    placement_ui::PlacementState,
+    placement_ui::{PlacementState, TOOLBAR},
+    shape_textures::ShapeTextures,
+    shop::{OpenPanel, upgrade_name},
     sim::{GameSpeed, Sim, SimEventMsg, SimEventsSet},
 };
 
@@ -29,7 +32,9 @@ impl Plugin for MenuPlugin {
                 (
                     update_hud,
                     notify_levels.after(SimEventsSet),
-                    game_keys.before(crate::camera::CameraSet),
+                    game_keys
+                        .before(crate::camera::CameraSet)
+                        .before(crate::shop::PanelKeys),
                 )
                     .run_if(in_state(AppState::InGame)),
             );
@@ -47,6 +52,9 @@ struct TickText;
 
 #[derive(Component, Debug)]
 struct GoalText;
+
+#[derive(Component, Debug)]
+struct GoalIcon;
 
 #[derive(Component, Debug)]
 struct NotificationText;
@@ -134,12 +142,30 @@ fn spawn_hud(mut commands: Commands) {
         children![
             (TickText, Text::new("")),
             (
-                GoalText,
-                Text::new(""),
-                TextFont {
-                    font_size: FontSize::Px(24.0),
+                Node {
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
                     ..default()
                 },
+                children![
+                    (
+                        GoalIcon,
+                        ImageNode::default(),
+                        Node {
+                            width: px(40),
+                            height: px(40),
+                            ..default()
+                        },
+                    ),
+                    (
+                        GoalText,
+                        Text::new(""),
+                        TextFont {
+                            font_size: FontSize::Px(24.0),
+                            ..default()
+                        },
+                    ),
+                ],
             ),
             (
                 NotificationText,
@@ -158,8 +184,11 @@ fn spawn_hud(mut commands: Commands) {
 fn update_hud(
     sim: Res<Sim>,
     speed: Res<GameSpeed>,
+    mut textures: ResMut<ShapeTextures>,
+    mut images: ResMut<Assets<Image>>,
     mut tick: Single<&mut Text, (With<TickText>, Without<GoalText>)>,
     mut goal: Single<&mut Text, (With<GoalText>, Without<TickText>)>,
+    mut icon: Single<&mut ImageNode, With<GoalIcon>>,
 ) {
     tick.0 = format!(
         "Tick {} - vitesse x{} - graine {} (ZQSD/fleches, molette, clic milieu ; Tab = vitesse, espace = pause, Echap = menu)",
@@ -167,24 +196,31 @@ fn update_hud(
         speed.0,
         sim.map.seed()
     );
-    goal.0 = match sim.hub.goal() {
-        Some(g) => format!(
-            "Niveau {} - livrer {} au hub : {} / {}{}",
-            sim.hub.level,
-            sim.registry.get(g.shape),
-            sim.hub.stored(g.shape),
-            g.required,
-            if g.throughput_only {
-                " par seconde (M5)"
-            } else {
-                ""
-            }
-        ),
-        None => format!(
-            "Niveau {} - histoire terminee (freeplay en M5)",
-            sim.hub.level
-        ),
-    };
+    let g = sim.hub.goal();
+    let text = format!(
+        "{} {} - livrer {} : {} / {}{}",
+        if sim.hub.is_free_play() {
+            "Mode libre, niveau"
+        } else {
+            "Niveau"
+        },
+        sim.hub.level,
+        sim.registry.get(g.shape),
+        sim.hub.goal_delivered(),
+        g.required,
+        if g.throughput_only {
+            " par seconde"
+        } else {
+            ""
+        }
+    );
+    if goal.0 != text {
+        goal.0 = text;
+    }
+    let handle = textures.get_or_render(*sim.registry.get(g.shape), &mut images);
+    if icon.image != handle {
+        icon.image = handle;
+    }
 }
 
 /// Nom affiché d'une récompense (sans accents : police par défaut).
@@ -215,8 +251,29 @@ fn reward_name(reward: Reward) -> &'static str {
         Reward::Filter => "filtre",
         Reward::Blueprints => "plans",
         Reward::Freeplay => "mode libre",
-        Reward::None => "aucune",
+        Reward::None | Reward::NoRewardFreeplay => "aucune",
     }
+}
+
+/// Bâtiments débloqués par une récompense, avec leur touche, pour la notification.
+fn unlocked_buildings(reward: Reward) -> Vec<String> {
+    let kinds: &[BuildingKind] = match reward {
+        Reward::CutterAndTrash => &[BuildingKind::Cutter, BuildingKind::Trash],
+        Reward::Rotater => &[BuildingKind::Rotater],
+        Reward::Painter => &[BuildingKind::Painter],
+        Reward::Mixer => &[BuildingKind::Mixer],
+        Reward::Stacker => &[BuildingKind::Stacker],
+        Reward::Balancer => &[BuildingKind::Balancer],
+        Reward::Tunnel => &[BuildingKind::UndergroundBelt],
+        _ => &[],
+    };
+    kinds
+        .iter()
+        .filter_map(|kind| {
+            let i = TOOLBAR.iter().position(|(_, k, _)| k == kind)?;
+            Some(format!("{} (touche {})", TOOLBAR[i].2, (i + 1) % 10))
+        })
+        .collect()
 }
 
 fn notify_levels(
@@ -226,14 +283,33 @@ fn notify_levels(
 ) {
     let (text, timer) = &mut *text;
     for SimEventMsg(event) in events.read() {
-        if let SimEvent::LevelCompleted(done) = event {
-            text.0 = format!(
-                "Niveau {} termine ! Recompense : {}",
-                done.level,
-                reward_name(done.reward)
-            );
-            timer.0 = Timer::from_seconds(NOTIFICATION_SECONDS, TimerMode::Once);
-        }
+        let message = match *event {
+            SimEvent::LevelCompleted(done) if done.reward == Reward::NoRewardFreeplay => {
+                format!("Niveau {} termine !", done.level)
+            }
+            SimEvent::LevelCompleted(done) => {
+                let mut m = format!(
+                    "Niveau {} termine ! Debloque : {}",
+                    done.level,
+                    reward_name(done.reward)
+                );
+                let buildings = unlocked_buildings(done.reward);
+                if !buildings.is_empty() {
+                    m.push_str(&format!("\nNouveau : {}", buildings.join(", ")));
+                }
+                m
+            }
+            SimEvent::UpgradePurchased { kind, level } => {
+                format!(
+                    "Amelioration achetee : {} niveau {}",
+                    upgrade_name(kind),
+                    level + 1
+                )
+            }
+            _ => continue,
+        };
+        text.0 = message;
+        timer.0 = Timer::from_seconds(NOTIFICATION_SECONDS, TimerMode::Once);
     }
     if timer.0.tick(time.delta()).just_finished() {
         text.0.clear();
@@ -243,6 +319,7 @@ fn notify_levels(
 fn game_keys(
     keys: Res<ButtonInput<KeyCode>>,
     placement: Res<PlacementState>,
+    panel: Res<OpenPanel>,
     mut speed: ResMut<GameSpeed>,
     mut next: ResMut<NextState<AppState>>,
 ) {
@@ -256,8 +333,9 @@ fn game_keys(
             _ => 1,
         };
     }
-    // Echap désélectionne d'abord le bâtiment en cours ; sinon retour au menu.
-    if keys.just_pressed(KeyCode::Escape) && placement.selected.is_none() {
+    // Echap ferme d'abord le panneau ouvert, puis désélectionne le bâtiment en cours ;
+    // sinon retour au menu.
+    if keys.just_pressed(KeyCode::Escape) && placement.selected.is_none() && !panel.is_open() {
         next.set(AppState::MainMenu);
     }
 }

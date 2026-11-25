@@ -152,23 +152,23 @@ fn find_nice_integer_value(num: f64) -> f64 {
 fn generate(kind: UpgradeKind) -> Vec<Tier> {
     let fixed = fixed_tiers(kind);
     let mut tiers = Vec::with_capacity(TIER_COUNT);
-    // Exigences cumulées (`currentTierRequirements`) ; au-delà des paliers fixes elles
-    // ne servent plus (`excludePrevious`), mais on garde leur croissance pour rester
-    // fidèle tant qu'elles sont représentables.
+    // Exigences cumulées (`currentTierRequirements`), reprises par chaque palier sauf
+    // `excludePrevious`.
     let mut current: Vec<(&'static str, f64)> = Vec::new();
     for i in 0..TIER_COUNT {
-        let (own, exclude_previous): (Vec<(&'static str, u64)>, bool) = if i < 7 {
-            (fixed[i].to_vec(), i >= 5)
-        } else {
-            let k = (i - 7) as u64;
-            (
-                vec![
-                    (PREPAREMENT_SHAPE, 30000 + k * 10000),
-                    (FINAL_GAME_SHAPE, 20000 + k * 5000),
-                    (ROCKET_SHAPE, 20000 + k * 5000),
-                ],
-                true,
-            )
+        let (own, exclude_previous): (Vec<(&'static str, u64)>, bool) = match fixed.get(i) {
+            Some(tier) => (tier.to_vec(), i >= 5),
+            None => {
+                let k = (i - 7) as u64;
+                (
+                    vec![
+                        (PREPAREMENT_SHAPE, 30000 + k * 10000),
+                        (FINAL_GAME_SHAPE, 20000 + k * 5000),
+                        (ROCKET_SHAPE, 20000 + k * 5000),
+                    ],
+                    true,
+                )
+            }
         };
         let mut required = Vec::new();
         if !exclude_previous {

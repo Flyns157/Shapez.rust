@@ -117,7 +117,11 @@ mod tests {
         );
         assert_eq!(
             available_variants(BuildingKind::Balancer, &hub),
-            [Variant::Default, Variant::Splitter, Variant::SplitterInverse]
+            [
+                Variant::Default,
+                Variant::Splitter,
+                Variant::SplitterInverse
+            ]
         );
     }
 }

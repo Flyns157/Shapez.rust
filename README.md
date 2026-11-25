@@ -42,6 +42,7 @@ node tools/js-oracle/shapes.mjs > crates/shapez_core/tests/golden/shapes.json   
 node tools/js-oracle/rng.mjs > crates/shapez_core/tests/golden/alea.json
 node tools/js-oracle/map.mjs > crates/shapez_sim/tests/golden/map.json   # chunks (-15..15)², 3 graines
 node tools/js-oracle/belts.mjs > crates/shapez_sim/tests/golden/belts.json   # 100 chemins de convoyeurs
+node tools/js-oracle/progression.mjs > crates/shapez_sim/tests/golden/progression.json   # paliers et freeplay
 node tools/js-oracle/shapes.mjs 10000 > /tmp/shapes.json
 SHAPEZ_GOLDEN_SHAPES=/tmp/shapes.json cargo test -p shapez_core --test golden_shapes
 node tools/js-oracle/belts.mjs 1500 > /tmp/belts.json
