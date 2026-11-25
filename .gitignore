@@ -30,3 +30,7 @@ rustc-ice-*.txt
 /assets/i18n
 /assets/fonts
 /assets/IMPORTED.txt
+
+# Clone du code source de shapez.io, s'il est placé dans ce dépôt plutôt qu'à côté
+# (utiliser alors SHAPEZ_JS_ROOT=shapez.io).
+/shapez.io/
