@@ -12,6 +12,7 @@ pub mod main_menu;
 pub mod map_render;
 pub mod marks_ui;
 pub mod menu;
+pub mod overlays;
 pub mod placement_ui;
 pub mod saves;
 pub mod shape_textures;
@@ -47,6 +48,7 @@ impl Plugin for GamePlugin {
             editing_ui::EditingUiPlugin,
             marks_ui::MarksUiPlugin,
             wires_ui::WiresUiPlugin,
+            overlays::OverlaysPlugin,
         ))
         .add_systems(Startup, spawn_camera);
     }
