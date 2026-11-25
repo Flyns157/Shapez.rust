@@ -237,7 +237,8 @@ rustup target add x86_64-pc-windows-gnu      # à lancer dans le dépôt : ajout
 cargo build --release --target x86_64-pc-windows-gnu -p shapez_game
 ```
 
-Le binaire est dans `target/x86_64-pc-windows-gnu/release/shapez_game.exe`.
+Le binaire est dans `target/x86_64-pc-windows-gnu/release/shapez_game.exe`. Il ne dépend
+que de DLL fournies par Windows : aucune DLL MinGW n'est à copier avec lui.
 
 Pour le lancer sur un PC Windows, copiez à côté de lui le dossier `assets/` (rempli par
 `cargo xtask import-assets`), puis indiquez son emplacement avec `SHAPEZ_ASSETS`. C'est
