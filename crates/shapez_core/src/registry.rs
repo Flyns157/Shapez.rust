@@ -65,6 +65,28 @@ impl ShapeRegistry {
     }
 }
 
+/// Le registre s'écrit comme la liste de ses formes, dans l'ordre des identifiants ;
+/// la relecture les ré-enregistre dans le même ordre, donc avec les mêmes identifiants.
+impl serde::Serialize for ShapeRegistry {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(&self.defs)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ShapeRegistry {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let defs = Vec::<ShapeDef>::deserialize(deserializer)?;
+        let mut registry = Self::new();
+        for def in defs {
+            let expected = registry.len();
+            if registry.intern(def).index() != expected {
+                return Err(serde::de::Error::custom("forme en double dans le registre"));
+            }
+        }
+        Ok(registry)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,27 +111,5 @@ mod tests {
             reg.iter().map(|(id, _)| id).collect::<Vec<_>>(),
             vec![ia, ic]
         );
-    }
-}
-
-/// Le registre s'écrit comme la liste de ses formes, dans l'ordre des identifiants ;
-/// la relecture les ré-enregistre dans le même ordre, donc avec les mêmes identifiants.
-impl serde::Serialize for ShapeRegistry {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(&self.defs)
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for ShapeRegistry {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let defs = Vec::<ShapeDef>::deserialize(deserializer)?;
-        let mut registry = Self::new();
-        for def in defs {
-            let expected = registry.len();
-            if registry.intern(def).index() != expected {
-                return Err(serde::de::Error::custom("forme en double dans le registre"));
-            }
-        }
-        Ok(registry)
     }
 }

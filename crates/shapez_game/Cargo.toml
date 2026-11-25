@@ -14,6 +14,7 @@ bevy.workspace = true
 shapez_core.workspace = true
 shapez_sim.workspace = true
 shapez_render_shapes.workspace = true
+shapez_save.workspace = true
 
 [features]
 # Compilation incrémentale plus rapide en dev : `cargo run --features dev`.

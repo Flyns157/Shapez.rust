@@ -4933,6 +4933,7 @@ dependencies = [
  "bevy",
  "shapez_core",
  "shapez_render_shapes",
+ "shapez_save",
  "shapez_sim",
 ]
 

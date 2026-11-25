@@ -10,11 +10,15 @@ dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
 | `crates/shapez_core` | Grille, formes (codes courts, opérations), couleurs, items, registre | non |
 | `crates/shapez_render_shapes` | Rastérisation des formes en RGBA (tiny-skia) | non |
 | `crates/shapez_sim` | Simulation déterministe à 60 ticks/s, en entiers ; génération de carte identique au JS | non |
-| `crates/shapez_game` | Binaire Bevy : rendu, entrées, UI | oui |
+| `crates/shapez_save` | Sauvegardes : en-tête, état JSON compressé zstd, CRC32, migrations, dossier | non |
+| `crates/shapez_game` | Binaire Bevy : rendu, entrées, UI, autosave | oui |
 | `xtask` | Tâches de développement | non |
 
-Les autres crates du plan (`shapez_data`, `shapez_save`)
-seront ajoutées avec les jalons qui en ont besoin.
+La crate `shapez_data` du plan sera ajoutée avec le jalon qui en a besoin.
+
+Les parties sont sauvegardées toutes les 2 minutes et en quittant, dans
+`~/.local/share/shapez-rs/saves` sous Linux (dossier de données de la plateforme
+ailleurs), ou dans le dossier indiqué par `SHAPEZ_SAVE_DIR`.
 
 ## Démarrer
 

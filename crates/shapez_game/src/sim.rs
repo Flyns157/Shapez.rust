@@ -19,6 +19,26 @@ impl Default for GameSpeed {
     }
 }
 
+/// Partie à lancer au prochain passage en jeu, choisie par le menu.
+#[derive(Resource, Debug, Default)]
+pub enum NextGame {
+    #[default]
+    New,
+    /// Partie chargée depuis la sauvegarde `name`.
+    Load { name: String, world: Box<SimWorld> },
+}
+
+/// Nom de la sauvegarde de la partie en cours.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+pub struct CurrentSave(pub String);
+
+/// Mise en place et retrait du monde ; les sauvegardes s'ordonnent autour.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SimLifecycle {
+    Start,
+    Stop,
+}
+
 /// Événement de la simulation, relayé aux systèmes de rendu et d'interface.
 #[derive(Message, Debug, Clone, Copy)]
 pub struct SimEventMsg(pub SimEvent);
@@ -34,12 +54,19 @@ impl Plugin for SimPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Time::<Fixed>::from_hz(f64::from(TICKS_PER_SECOND)))
             .init_resource::<GameSpeed>()
-            .add_systems(OnEnter(AppState::InGame), |mut commands: Commands| {
-                commands.insert_resource(Sim(SimWorld::new_game(new_game_seed())));
-            })
-            .add_systems(OnExit(AppState::InGame), |mut commands: Commands| {
-                commands.remove_resource::<Sim>();
-            })
+            .init_resource::<NextGame>()
+            .add_systems(
+                OnEnter(AppState::InGame),
+                start_world.in_set(SimLifecycle::Start),
+            )
+            .add_systems(
+                OnExit(AppState::InGame),
+                (|mut commands: Commands| {
+                    commands.remove_resource::<Sim>();
+                    commands.remove_resource::<CurrentSave>();
+                })
+                .in_set(SimLifecycle::Stop),
+            )
             .add_message::<SimEventMsg>()
             .add_systems(FixedUpdate, step_sim.run_if(in_state(AppState::InGame)))
             .add_systems(
@@ -48,6 +75,16 @@ impl Plugin for SimPlugin {
                     .in_set(SimEventsSet)
                     .run_if(in_state(AppState::InGame)),
             );
+    }
+}
+
+fn start_world(mut commands: Commands, mut next: ResMut<NextGame>) {
+    match std::mem::take(&mut *next) {
+        NextGame::New => commands.insert_resource(Sim(SimWorld::new_game(new_game_seed()))),
+        NextGame::Load { name, world } => {
+            commands.insert_resource(Sim(*world));
+            commands.insert_resource(CurrentSave(name));
+        }
     }
 }
 
