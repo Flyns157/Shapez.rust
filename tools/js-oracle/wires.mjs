@@ -1,14 +1,16 @@
-// Vecteurs golden de la couche wires : réseaux, émetteurs constants, leviers et portes.
+// Vecteurs golden de la couche wires : réseaux, émetteurs constants, leviers, portes et
+// processeurs virtuels.
 //
 //   node tools/js-oracle/wires.mjs [N=60] > crates/shapez_sim/tests/golden/wires.json
 //
 // Chaque cas pose au hasard, sur une petite grille, des câbles (deux couleurs), des
-// tunnels de câbles, des portes ET/OU/NON/XOR, des transistors, des émetteurs constants
-// (couche wires) et des leviers (couche normale). Les systèmes du jeu (`WireSystem`,
-// `LogicGateSystem`, `LeverSystem`, `ConstantSignalSystem`) tournent ensuite tels quels,
-// tick après tick, pendant qu'on bascule des leviers et qu'on retire ou ajoute des
-// bâtiments. On relève à chaque tick la sortie des portes et l'état du réseau de chaque
-// câble.
+// tunnels de câbles, des portes ET/OU/NON/XOR, des transistors, des analyseurs, des
+// comparateurs, des processeurs virtuels, des émetteurs constants (booléens, couleurs
+// ou formes, couche wires) et des leviers (couche normale). Les systèmes du jeu
+// (`WireSystem`, `LogicGateSystem`, `LeverSystem`, `ConstantSignalSystem`) tournent
+// ensuite tels quels, tick après tick, pendant qu'on bascule des leviers et qu'on
+// retire ou ajoute des bâtiments. On relève à chaque tick toutes les sorties des
+// portes et l'état du réseau de chaque câble.
 
 import { loadModule } from "./load_js.mjs";
 
@@ -28,6 +30,25 @@ const colorItems = loadModule(
 );
 // `COLOR_ITEM_SINGLETONS` est rempli à la fin du module.
 const { COLOR_ITEM_SINGLETONS } = colorItems;
+
+const { ShapeDefinition } = loadModule("game/shape_definition.js", {
+    ...colors,
+    BasicSerializableObject,
+    Vector,
+    globalConfig: {},
+    THEME: {},
+    types: {},
+    makeOffscreenBuffer: () => {
+        throw new Error("non utilisé");
+    },
+    smoothenDpi: x => x,
+    DrawParameters: class {},
+});
+const { ShapeItem } = loadModule(
+    "game/items/shape_item.js",
+    { BaseItem, ShapeDefinition, globalConfig, types: {}, THEME: {} },
+    { stubImports: true }
+);
 
 class Component {}
 const types = { fixedSizeArray: () => null, structured: () => null, nullable: () => null, bool: null };
@@ -79,11 +100,32 @@ const { MetaConstantSignalBuilding } = loadModule("game/buildings/constant_signa
 const { MetaWireTunnelBuilding } = loadModule("game/buildings/wire_tunnel.js", buildingScope, {
     stubImports: true,
 });
+const { MetaAnalyzerBuilding } = loadModule("game/buildings/analyzer.js", buildingScope, {
+    stubImports: true,
+});
+const { MetaComparatorBuilding } = loadModule("game/buildings/comparator.js", buildingScope, {
+    stubImports: true,
+});
+const silhouette = class {
+    getSilhouetteColor() {}
+};
+const { MetaVirtualProcessorBuilding } = loadModule(
+    "game/buildings/virtual_processor.js",
+    {
+        ...buildingScope,
+        MetaCutterBuilding: silhouette,
+        MetaRotaterBuilding: silhouette,
+        MetaStackerBuilding: silhouette,
+        MetaPainterBuilding: silhouette,
+    },
+    { stubImports: true }
+);
 
 // Carte et gestionnaire d'entités minimaux.
 let entities = [];
 const root = {
     gameInitialized: true,
+    shapeDefinitionMgr: null,
     signals: new Proxy({}, { get: () => ({ add() {}, dispatch() {} }) }),
     entityMgr: {
         getAllWithComponent: C => entities.filter(e => e.components[C.getId()]),
@@ -140,6 +182,22 @@ const systemScope = {
     },
     ACHIEVEMENTS: {},
 };
+// Le vrai gestionnaire de formes : opérations des processeurs virtuels.
+const { ShapeDefinitionManager } = loadModule(
+    "game/shape_definition_manager.js",
+    {
+        ...colors,
+        ShapeDefinition,
+        ShapeItem,
+        BasicSerializableObject,
+        ACHIEVEMENTS: {},
+        createLogger: () => ({ log() {}, warn() {}, error() {} }),
+    },
+    { stubImports: true }
+);
+root.shapeDefinitionMgr = new ShapeDefinitionManager(root);
+systemScope.ShapeDefinition = ShapeDefinition;
+
 const { WireSystem } = loadModule("game/systems/wire.js", systemScope, { stubImports: true });
 const { LogicGateSystem } = loadModule("game/systems/logic_gate.js", systemScope, { stubImports: true });
 const { LeverSystem } = loadModule("game/systems/lever.js", systemScope, { stubImports: true });
@@ -194,6 +252,18 @@ function makeEntity(spec) {
             meta.updateVariants(entity, 0, spec.variant);
             break;
         }
+        case "analyzer":
+            new MetaAnalyzerBuilding().setupEntityComponents(entity);
+            break;
+        case "comparator":
+            new MetaComparatorBuilding().setupEntityComponents(entity);
+            break;
+        case "virtual_processor": {
+            const meta = new MetaVirtualProcessorBuilding();
+            meta.setupEntityComponents(entity);
+            meta.updateVariants(entity, 0, spec.variant);
+            break;
+        }
         case "lever":
             new MetaLeverBuilding().setupEntityComponents(entity);
             entity.components.Lever.toggled = !!spec.on;
@@ -211,12 +281,14 @@ function decode(code) {
     if (code === "") return null;
     if (code === "0") return booleans.BOOL_FALSE_SINGLETON;
     if (code === "1") return booleans.BOOL_TRUE_SINGLETON;
+    if (code.length > 1) return root.shapeDefinitionMgr.getShapeItemFromShortKey(code);
     return COLOR_ITEM_SINGLETONS[colors.enumShortcodeToColor[code]];
 }
 
 function encode(item) {
     if (!item) return "";
     if (item.getItemType() === "boolean") return item.value ? "1" : "0";
+    if (item.getItemType() === "shape") return item.definition.getHash();
     return colors.enumColorToShortcode[item.color];
 }
 
@@ -232,7 +304,19 @@ function mulberry32(seed) {
 
 const W = 9;
 const H = 7;
-const SIGNALS = ["", "0", "1", "1", "r", "u"];
+const SIGNALS = [
+    "",
+    "0",
+    "1",
+    "1",
+    "r",
+    "u",
+    "CuCuCuCu",
+    "RrSg--Cb",
+    "--Rw----",
+    "Cu------:SrSr----",
+    "CgRgSgWg:Cu--Cu--:--Ry----",
+];
 
 function randomWireSpec(rand, x, y) {
     const r = rand();
@@ -246,8 +330,71 @@ function randomWireSpec(rand, x, y) {
     if (r < 0.87) {
         return { kind: "transistor", variant: rand() < 0.5 ? "default" : "mirrored", x, y, rot };
     }
+    if (r < 0.91) {
+        const kind = rand() < 0.5 ? "analyzer" : "comparator";
+        return { kind, variant: "default", x, y, rot };
+    }
+    if (r < 0.96) {
+        const variant = ["default", "rotater", "stacker", "painter", "unstacker"][Math.floor(rand() * 5)];
+        return { kind: "virtual_processor", variant, x, y, rot };
+    }
     const signal = SIGNALS[Math.floor(rand() * SIGNALS.length)];
     return { kind: "constant_signal", variant: "default", x, y, rot, signal };
+}
+
+// Signaux des circuits « alimentés » : surtout des formes et des couleurs.
+const FEED_SIGNALS = [...SIGNALS.slice(6), ...SIGNALS.slice(6), "r", "g", "b", "w", "u", "1", "0", ""];
+const PROCESSORS = [
+    ["analyzer", "default"],
+    ["comparator", "default"],
+    ["virtual_processor", "default"],
+    ["virtual_processor", "rotater"],
+    ["virtual_processor", "stacker"],
+    ["virtual_processor", "painter"],
+    ["virtual_processor", "unstacker"],
+    ["transistor", "default"],
+    ["logic_gate", "xor"],
+];
+const dirToAngle = { top: 0, right: 90, bottom: 180, left: 270 };
+const dirOffset = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] };
+const inverse = { top: "bottom", bottom: "top", left: "right", right: "left" };
+
+// Circuit « alimenté » : des processeurs dont chaque entrée reçoit un émetteur
+// constant collé au pin et chaque sortie un câble, qui peut en toucher d'autres.
+function feedBuildings(rand) {
+    const specs = [];
+    const used = new Set();
+    const key = (x, y) => x + "," + y;
+    const count = 3 + Math.floor(rand() * 5);
+    for (let i = 0; i < count; ++i) {
+        const x = 1 + Math.floor(rand() * (W - 2));
+        const y = 1 + Math.floor(rand() * (H - 2));
+        if (used.has(key(x, y))) continue;
+        const [kind, variant] = PROCESSORS[Math.floor(rand() * PROCESSORS.length)];
+        const rot = [0, 90, 180, 270][Math.floor(rand() * 4)];
+        const spec = { kind, variant, x, y, rot };
+        used.add(key(x, y));
+        specs.push(spec);
+    }
+    for (const spec of [...specs]) {
+        const entity = makeEntity(spec);
+        for (const slot of entity.components.WiredPins.slots) {
+            const dir = entity.components.StaticMapEntity.localDirectionToWorld(slot.direction);
+            const [dx, dy] = dirOffset[dir];
+            const x = spec.x + dx;
+            const y = spec.y + dy;
+            if (x < 0 || y < 0 || x >= W || y >= H || used.has(key(x, y))) continue;
+            used.add(key(x, y));
+            if (slot.type === pins.enumPinSlotType.logicalAcceptor) {
+                const signal = FEED_SIGNALS[Math.floor(rand() * FEED_SIGNALS.length)];
+                const rot = dirToAngle[inverse[dir]];
+                specs.push({ kind: "constant_signal", variant: "default", x, y, rot, signal });
+            } else {
+                specs.push({ kind: "wire", variant: "first", x, y, rot: 0 });
+            }
+        }
+    }
+    return specs;
 }
 
 const N = Number(process.argv[2] || 60);
@@ -255,9 +402,10 @@ const rand = mulberry32(0x3172e5);
 const cases = [];
 for (let c = 0; c < N; ++c) {
     entities = [];
-    const buildings = [];
-    const density = 0.45 + rand() * 0.4;
-    for (let y = 0; y < H; ++y) {
+    const feed = c % 2 === 1;
+    const buildings = feed ? feedBuildings(rand) : [];
+    const density = feed ? 0 : 0.45 + rand() * 0.4;
+    for (let y = 0; y < H && !feed; ++y) {
         for (let x = 0; x < W; ++x) {
             if (rand() < density) buildings.push(randomWireSpec(rand, x, y));
             if (rand() < 0.12) {
@@ -283,7 +431,13 @@ for (let c = 0; c < N; ++c) {
         // Avant le tick : on bascule un levier, ou on retire / ajoute un bâtiment.
         const r = rand();
         const levers = entities.filter(e => e.components.Lever);
-        if (r < 0.25 && levers.length > 0) {
+        const signals = entities.filter(e => e.components.ConstantSignal);
+        if (feed && r < 0.2 && signals.length > 0) {
+            const emitter = signals[Math.floor(rand() * signals.length)];
+            const signal = FEED_SIGNALS[Math.floor(rand() * FEED_SIGNALS.length)];
+            emitter.components.ConstantSignal.signal = decode(signal);
+            ops.push({ t, op: "signal", x: emitter.spec.x, y: emitter.spec.y, signal });
+        } else if (r < 0.25 && levers.length > 0) {
             const lever = levers[Math.floor(rand() * levers.length)];
             lever.components.Lever.toggled = !lever.components.Lever.toggled;
             ops.push({ t, op: "toggle", x: lever.spec.x, y: lever.spec.y });
@@ -306,13 +460,18 @@ for (let c = 0; c < N; ++c) {
 
         for (const system of systems) system.update();
 
-        // Sortie de chaque porte, puis état du réseau de chaque câble, tuile par tuile
-        // (ligne par ligne) ; "-" = pas de réseau, "x" = conflit, sinon la valeur (vide
-        // = rien).
+        // Sorties de chaque porte (pins émetteurs séparés par "/"), puis état du réseau
+        // de chaque câble, tuile par tuile (ligne par ligne) ; "-" = pas de réseau,
+        // "x" = conflit, sinon la valeur (vide = rien).
         const sorted = [...entities].sort((a, b) => a.spec.y - b.spec.y || a.spec.x - b.spec.x);
         const gateOut = sorted
             .filter(e => e.components.LogicGate)
-            .map(e => encode(e.components.WiredPins.slots[0].value));
+            .map(e =>
+                e.components.WiredPins.slots
+                    .filter(s => s.type === pins.enumPinSlotType.logicalEjector)
+                    .map(s => encode(s.value))
+                    .join("/")
+            );
         const wires = sorted
             .filter(e => e.components.Wire)
             .map(e => {

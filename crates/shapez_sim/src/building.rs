@@ -55,6 +55,20 @@ pub enum BuildingKind {
     /// Portes ET (variante par défaut), OU, NON et XOR.
     LogicGate,
     Transistor,
+    /// Filtre : laisse passer vers le haut les items égaux au signal, rejette les
+    /// autres à droite.
+    Filter,
+    /// Lecteur de convoyeur : laisse passer les items et publie le dernier lu.
+    Reader,
+    /// Afficheur de la valeur d'un réseau.
+    Display,
+    /// Analyseur de forme (couche wires).
+    Analyzer,
+    /// Comparateur (couche wires).
+    Comparator,
+    /// Processeurs virtuels : découpe (variante par défaut), rotation, empilage,
+    /// peinture et désempilage, sur des signaux.
+    VirtualProcessor,
 }
 
 /// Variante d'un bâtiment (`enum*Variants` du JS). Chaque type n'accepte que les
@@ -97,10 +111,18 @@ pub enum Variant {
     Or,
     Not,
     Xor,
+    /// Processeur virtuel de rotation (`enumVirtualProcessorVariants.rotater`).
+    Rotate,
+    /// Processeur virtuel d'empilage.
+    Stack,
+    /// Processeur virtuel de peinture.
+    Paint,
+    /// Processeur virtuel de désempilage.
+    Unstack,
 }
 
 impl BuildingKind {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 24] = [
         Self::Belt,
         Self::Balancer,
         Self::UndergroundBelt,
@@ -119,6 +141,12 @@ impl BuildingKind {
         Self::Lever,
         Self::LogicGate,
         Self::Transistor,
+        Self::Filter,
+        Self::Reader,
+        Self::Display,
+        Self::Analyzer,
+        Self::Comparator,
+        Self::VirtualProcessor,
     ];
 
     /// Identifiant du JS (`MetaBuilding.getId()`), utile pour les sauvegardes.
@@ -142,6 +170,12 @@ impl BuildingKind {
             Self::Lever => "lever",
             Self::LogicGate => "logic_gate",
             Self::Transistor => "transistor",
+            Self::Filter => "filter",
+            Self::Reader => "reader",
+            Self::Display => "display",
+            Self::Analyzer => "analyzer",
+            Self::Comparator => "comparator",
+            Self::VirtualProcessor => "virtual_processor",
         }
     }
 
@@ -158,6 +192,7 @@ impl BuildingKind {
             Self::Wire => &[Default, Second],
             Self::LogicGate => &[Default, Or, Not, Xor],
             Self::Transistor => &[Default, Mirrored],
+            Self::VirtualProcessor => &[Default, Rotate, Stack, Paint, Unstack],
             _ => &[Default],
         }
     }
@@ -173,7 +208,10 @@ impl BuildingKind {
             | Self::WireTunnel
             | Self::ConstantSignal
             | Self::LogicGate
-            | Self::Transistor => Layer::Wires,
+            | Self::Transistor
+            | Self::Analyzer
+            | Self::Comparator
+            | Self::VirtualProcessor => Layer::Wires,
             _ => Layer::Regular,
         }
     }
@@ -283,6 +321,55 @@ pub fn pins(kind: BuildingKind, variant: Variant) -> Vec<PinSlot> {
     };
     match kind {
         BuildingKind::ConstantSignal | BuildingKind::Lever => vec![pin(Top, Ejector)],
+        BuildingKind::Display => vec![pin(Bottom, Acceptor)],
+        BuildingKind::Filter => vec![pin(Left, Acceptor)],
+        // Sortie 0 : un item est passé dans la dernière seconde ; sortie 1 : dernier item.
+        BuildingKind::Reader => vec![pin(Right, Ejector), pin(Left, Ejector)],
+        // Sortie 0 : l'item stocké ; sortie 1 : le stockage est plein.
+        BuildingKind::Storage => vec![
+            PinSlot {
+                pos: TilePos::new(1, 1),
+                direction: Right,
+                kind: Ejector,
+            },
+            PinSlot {
+                pos: TilePos::new(0, 1),
+                direction: Left,
+                kind: Ejector,
+            },
+        ],
+        BuildingKind::Painter if variant == Variant::Quad => (0..4)
+            .map(|x| PinSlot {
+                pos: TilePos::new(x, 0),
+                direction: Bottom,
+                kind: Acceptor,
+            })
+            .collect(),
+        BuildingKind::Comparator => {
+            vec![pin(Top, Ejector), pin(Left, Acceptor), pin(Right, Acceptor)]
+        }
+        BuildingKind::Analyzer => {
+            vec![
+                pin(Left, Ejector),
+                pin(Right, Ejector),
+                pin(Bottom, Acceptor),
+            ]
+        }
+        BuildingKind::VirtualProcessor => match variant {
+            Variant::Rotate => vec![pin(Top, Ejector), pin(Bottom, Acceptor)],
+            Variant::Stack | Variant::Paint => {
+                vec![
+                    pin(Top, Ejector),
+                    pin(Bottom, Acceptor),
+                    pin(Right, Acceptor),
+                ]
+            }
+            _ => vec![
+                pin(Left, Ejector),
+                pin(Right, Ejector),
+                pin(Bottom, Acceptor),
+            ],
+        },
         BuildingKind::LogicGate if variant == Variant::Not => {
             vec![pin(Top, Ejector), pin(Bottom, Acceptor)]
         }
@@ -323,7 +410,7 @@ pub const fn dimensions(kind: BuildingKind, variant: Variant) -> (i32, i32) {
         (Painter, Variant::Double) => (2, 2),
         (Painter, Variant::Quad) => (4, 1),
         (Painter, _) => (2, 1),
-        (Stacker | Mixer, _) => (2, 1),
+        (Stacker | Mixer | Filter, _) => (2, 1),
         (Storage, _) => (2, 2),
         (Hub, _) => (4, 4),
         _ => (1, 1),
@@ -458,7 +545,13 @@ pub fn slots(kind: BuildingKind, variant: Variant, rotation_variant: u8) -> Slot
             }
             (a, vec![])
         }
-        Wire | WireTunnel | ConstantSignal | Lever | LogicGate | Transistor => (vec![], vec![]),
+        Filter => (
+            vec![acc(0, 0, Bottom, Any)],
+            vec![ej(0, 0, Top), ej(1, 0, Right)],
+        ),
+        Reader => (vec![acc(0, 0, Bottom, Any)], vec![ej(0, 0, Top)]),
+        Wire | WireTunnel | ConstantSignal | Lever | LogicGate | Transistor | Display
+        | Analyzer | Comparator | VirtualProcessor => (vec![], vec![]),
     };
     Slots {
         acceptors,
@@ -605,6 +698,7 @@ mod tests {
                     .iter()
                     .map(|a| a.pos)
                     .chain(s.ejectors.iter().map(|e| e.pos))
+                    .chain(pins(kind, variant).iter().map(|p| p.pos))
                 {
                     assert!(
                         p.x >= 0 && p.x < w && p.y >= 0 && p.y < h,

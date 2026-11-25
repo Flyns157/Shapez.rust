@@ -1,10 +1,13 @@
 //! Logistique et traitement des items : chemins de convoyeurs, éjecteurs, extracteurs,
-//! tunnels, processeurs et hub (port des systèmes `belt`, `itemEjector`, `miner`,
-//! `undergroundBelt` et `itemProcessor` du JS).
+//! tunnels, stockages, processeurs, filtres et hub (port des systèmes `belt`,
+//! `itemEjector`, `miner`, `undergroundBelt`, `storage`, `itemProcessor`, `filter` et
+//! `beltReader` du JS).
 //!
 //! Chaque type de composant vit dans sa propre table indexée par [`BuildingId`]
 //! (plan, §3.3). Les systèmes tournent dans l'ordre du `GameSystemManager` du JS :
-//! convoyeurs → tunnels → extracteurs → processeurs → éjecteurs.
+//! convoyeurs → tunnels → extracteurs → stockages → processeurs → filtres → éjecteurs.
+//! Les lecteurs de convoyeur publient leurs valeurs après la couche wires
+//! ([`Factory::update_readers`]).
 
 use std::collections::VecDeque;
 
@@ -17,13 +20,20 @@ use crate::{
     hub_goals::HubGoals,
     map::{Map, MapResource},
     placement::{BuildingId, Buildings, SimEvent},
-    units::{CURVED_BELT_LENGTH, ProcessorKind, TICK, TILE, Upgrades},
+    units::{CURVED_BELT_LENGTH, ProcessorKind, SECOND, TICK, TILE, Upgrades},
+    wires::{Wiring, is_truthy},
 };
 
 /// `MAX_QUEUED_CHARGES`.
 const MAX_QUEUED_CHARGES: usize = 2;
 /// `chainBufferSize` des extracteurs chaînables.
 const CHAIN_BUFFER_SIZE: usize = 6;
+/// `StorageComponent.maximumStorage`.
+pub const STORAGE_CAPACITY: u32 = 5000;
+/// `MAX_ITEMS_IN_QUEUE` du filtre.
+const FILTER_QUEUE: usize = 2;
+/// `readerAnalyzeIntervalSeconds`.
+const READER_WINDOW: u64 = 10 * SECOND;
 
 /// Où un slot d'éjection livre ses items (cache recalculé quand le voisinage change).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -130,9 +140,12 @@ impl Processor {
         matches!(self.kind, ProcessorKind::Hub | ProcessorKind::Trash)
     }
 
-    /// `checkRequirements` : sans wires, le peintre quadruple n'accepte que la forme.
-    fn check_requirements(&self, slot: usize) -> bool {
-        self.kind != ProcessorKind::PainterQuad || slot == 0
+    /// `checkRequirements` : le peintre quadruple n'accepte une couleur que si le pin
+    /// de ce quart reçoit un signal vrai.
+    fn check_requirements(&self, id: BuildingId, slot: usize, wiring: &Wiring) -> bool {
+        self.kind != ProcessorKind::PainterQuad
+            || slot == 0
+            || is_truthy(wiring.input_value(id, slot - 1))
     }
 
     /// `tryTakeItem`.
@@ -154,9 +167,26 @@ impl Processor {
         true
     }
 
-    /// `canProcess` : le peintre quadruple attend des signaux wires (M8).
-    fn can_process(&self) -> bool {
-        self.kind != ProcessorKind::PainterQuad && self.input_count >= self.inputs_per_charge
+    /// `canProcess`.
+    fn can_process(&self, id: BuildingId, wiring: &Wiring, registry: &ShapeRegistry) -> bool {
+        if self.kind != ProcessorKind::PainterQuad {
+            return self.input_count >= self.inputs_per_charge;
+        }
+        // Peintre quadruple : il faut la forme, au moins un quart activé, et la couleur
+        // de chaque quart activé dont la forme a quelque chose.
+        let Some(Item::Shape(shape)) = self.inputs[0] else {
+            return false;
+        };
+        let enabled: [bool; 4] = std::array::from_fn(|i| is_truthy(wiring.input_value(id, i)));
+        if !enabled.contains(&true) {
+            return false;
+        }
+        let def = registry.get(shape);
+        (0..4).all(|i| {
+            !enabled[i]
+                || self.inputs[1 + i].is_some()
+                || def.layers().iter().all(|layer| layer[i].is_none())
+        })
     }
 
     /// Nombre d'items en attente d'entrée (pour l'affichage et les tests).
@@ -216,25 +246,117 @@ impl Tunnel {
     }
 }
 
+/// `StorageComponent`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct Storage {
+    pub item: Option<Item>,
+    pub count: u32,
+}
+
+impl Storage {
+    pub fn is_full(&self) -> bool {
+        self.count >= STORAGE_CAPACITY
+    }
+
+    /// `canAcceptItem` : un seul type d'item à la fois (les booléens sont refusés une
+    /// fois le stockage entamé).
+    fn can_accept(&self, item: Item) -> bool {
+        if self.is_full() {
+            return false;
+        }
+        match self.item {
+            None => true,
+            _ if self.count == 0 => true,
+            Some(Item::Bool(_)) => false,
+            Some(stored) => stored == item,
+        }
+    }
+}
+
+/// Item en transit dans un filtre (`progress` de 0 à [`TILE`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+struct Pending {
+    item: Item,
+    progress: u32,
+}
+
+/// `FilterComponent` : items qui passent (slot 0, en haut) ou sont rejetés (slot 1,
+/// à droite).
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Filter {
+    lists: [Vec<Pending>; 2],
+}
+
+/// `BeltReaderComponent`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Reader {
+    pub last_item: Option<Item>,
+    /// Dates de passage des items des dix dernières secondes.
+    times: VecDeque<u64>,
+}
+
+impl Reader {
+    /// Débit en items par seconde (`lastThroughput`, pour l'affichage).
+    pub fn throughput(&self) -> f32 {
+        if self.times.len() < 2 {
+            return 0.0;
+        }
+        let span = self.times.back().unwrap() - self.times.front().unwrap();
+        let average = span as f32 / (self.times.len() - 1) as f32 / SECOND as f32;
+        (1.0 / average).min(2.0 * 23.9)
+    }
+}
+
 /// Bâtiments qui reçoivent des items depuis un convoyeur ou un éjecteur.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 struct Receivers {
     processors: SecondaryMap<BuildingId, Processor>,
     tunnels: SecondaryMap<BuildingId, Tunnel>,
+    #[serde(default)]
+    storages: SecondaryMap<BuildingId, Storage>,
+    #[serde(default)]
+    filters: SecondaryMap<BuildingId, Filter>,
 }
 
 impl Receivers {
     fn accepts_items(&self, id: BuildingId) -> bool {
-        self.processors.contains_key(id) || self.tunnels.contains_key(id)
+        self.processors.contains_key(id)
+            || self.tunnels.contains_key(id)
+            || self.storages.contains_key(id)
+            || self.filters.contains_key(id)
     }
 
     /// `tryPassOverItem` / `computePassOverFunctionWithoutBelts`.
-    fn try_take(&mut self, id: BuildingId, slot: usize, item: Item) -> bool {
+    fn try_take(&mut self, id: BuildingId, slot: usize, item: Item, wiring: &Wiring) -> bool {
         if let Some(p) = self.processors.get_mut(id) {
-            return p.check_requirements(slot) && p.try_take(item, slot);
+            return p.check_requirements(id, slot, wiring) && p.try_take(item, slot);
         }
         if let Some(t) = self.tunnels.get_mut(id) {
             return t.try_accept_external(item);
+        }
+        if let Some(s) = self.storages.get_mut(id) {
+            if !s.can_accept(item) {
+                return false;
+            }
+            s.item = Some(item);
+            s.count += 1;
+            return true;
+        }
+        if let Some(f) = self.filters.get_mut(id) {
+            // `FilterSystem.tryAcceptItem` : sans signal, le filtre refuse tout.
+            let Some(value) = wiring.input_value(id, 0) else {
+                return false;
+            };
+            let list = if value == Item::Bool(true) || value == item {
+                &mut f.lists[0]
+            } else {
+                &mut f.lists[1]
+            };
+            if list.len() >= FILTER_QUEUE {
+                return false;
+            }
+            list.push(Pending { item, progress: 0 });
+            return true;
         }
         false
     }
@@ -255,6 +377,9 @@ pub struct TickContext<'a> {
     pub map: &'a mut Map,
     pub registry: &'a mut ShapeRegistry,
     pub hub: &'a mut HubGoals,
+    /// Couche wires : signaux lus par les filtres et le peintre quadruple, pins écrits
+    /// par les stockages.
+    pub wiring: &'a mut Wiring,
     pub upgrades: Upgrades,
     /// Date du tick (`root.time.now()`), en unités de [`crate::units::SECOND`].
     pub now: u64,
@@ -279,6 +404,8 @@ pub struct Factory {
     ejectors: SecondaryMap<BuildingId, Ejector>,
     receivers: Receivers,
     miners: SecondaryMap<BuildingId, Miner>,
+    #[serde(default)]
+    readers: SecondaryMap<BuildingId, Reader>,
     ejectors_dirty: bool,
     tunnels_dirty: bool,
     miners_dirty: bool,
@@ -325,6 +452,7 @@ fn processor_for(b: &Building) -> Option<Processor> {
         (BuildingKind::Painter, _) => (P::Painter, 2),
         (BuildingKind::Trash, _) => (P::Trash, 1),
         (BuildingKind::Hub, _) => (P::Hub, 1),
+        (BuildingKind::Reader, _) => (P::Reader, 1),
         _ => return None,
     };
     Some(Processor::new(kind, per_charge, slots))
@@ -388,6 +516,15 @@ impl Factory {
                     );
                     self.tunnels_dirty = true;
                 }
+                BuildingKind::Storage => {
+                    self.receivers.storages.insert(id, Storage::default());
+                }
+                BuildingKind::Filter => {
+                    self.receivers.filters.insert(id, Filter::default());
+                }
+                BuildingKind::Reader => {
+                    self.readers.insert(id, Reader::default());
+                }
                 _ => {}
             }
         }
@@ -401,6 +538,9 @@ impl Factory {
         }
         self.ejectors.remove(id);
         self.receivers.processors.remove(id);
+        self.receivers.storages.remove(id);
+        self.receivers.filters.remove(id);
+        self.readers.remove(id);
         if let Some(m) = self.miners.remove(id) {
             self.miners_dirty |= m.chainable;
         }
@@ -648,8 +788,76 @@ impl Factory {
         self.update_belts(ctx);
         self.update_tunnels(ctx);
         self.update_miners(ctx);
+        self.update_storages(ctx);
         self.update_processors(ctx);
+        self.update_filters(ctx);
         self.update_ejectors(ctx);
+    }
+
+    /// `StorageSystem.update` : un item par tick vers le premier slot libre, puis les
+    /// pins (item stocké, plein).
+    fn update_storages(&mut self, ctx: &mut TickContext<'_>) {
+        for (id, storage) in self.receivers.storages.iter_mut() {
+            if let Some(item) = storage.item
+                && storage.count > 0
+                && let Some(ejector) = self.ejectors.get_mut(id)
+                && let Some(slot) = ejector.first_free_slot()
+                && ejector.try_eject(slot, item)
+            {
+                storage.count -= 1;
+                if storage.count == 0 {
+                    storage.item = None;
+                }
+            }
+            if let Some(building) = ctx.buildings.get(id) {
+                ctx.wiring.set_pin(id, building, 0, storage.item);
+                ctx.wiring
+                    .set_pin(id, building, 1, Some(Item::Bool(storage.is_full())));
+            }
+        }
+    }
+
+    /// `FilterSystem.update`, y compris son parcours qui retire toujours le premier
+    /// item de la liste et saute le suivant après une éjection.
+    fn update_filters(&mut self, ctx: &mut TickContext<'_>) {
+        let step = ctx.upgrades.belt_speed_per_tick();
+        let required = TILE - step;
+        for (id, filter) in self.receivers.filters.iter_mut() {
+            let Some(ejector) = self.ejectors.get_mut(id) else {
+                continue;
+            };
+            for (slot, list) in filter.lists.iter_mut().enumerate() {
+                let mut j = 0;
+                while j < list.len() {
+                    let pending = &mut list[j];
+                    pending.progress = required.min(pending.progress + step);
+                    if pending.progress >= required && ejector.try_eject(slot, pending.item) {
+                        list.remove(0);
+                    }
+                    j += 1;
+                }
+            }
+        }
+    }
+
+    /// `BeltReaderSystem.update`, après les portes logiques : pin 0 vrai si un item est
+    /// passé dans la dernière seconde, pin 1 = dernier item.
+    pub fn update_readers(&mut self, buildings: &Buildings, wiring: &mut Wiring, now: u64) {
+        for (id, reader) in self.readers.iter_mut() {
+            while reader
+                .times
+                .front()
+                .is_some_and(|&t| t + READER_WINDOW < now)
+            {
+                reader.times.pop_front();
+            }
+            let Some(building) = buildings.get(id) else {
+                continue;
+            };
+            let last = reader.times.back().copied().unwrap_or(0);
+            wiring.set_pin(id, building, 0, Some(Item::Bool(last + SECOND > now)));
+            wiring.set_pin(id, building, 1, reader.last_item);
+        }
     }
 
     fn update_belts(&mut self, ctx: &mut TickContext<'_>) {
@@ -676,9 +884,10 @@ impl Factory {
                     filter,
                 } => {
                     let receivers = &mut self.receivers;
+                    let wiring = &*ctx.wiring;
                     let mut accept = |item| {
                         filter_accepts(filter, item)
-                            && receivers.try_take(building, usize::from(slot), item)
+                            && receivers.try_take(building, usize::from(slot), item, wiring)
                     };
                     self.paths[p].update(speed, Acceptor::Other(&mut accept));
                 }
@@ -858,7 +1067,14 @@ impl Factory {
                     p.queued.extend(charge.items);
                 }
             }
-            if p.charges.len() < MAX_QUEUED_CHARGES && p.can_process() {
+            if p.charges.len() < MAX_QUEUED_CHARGES && p.can_process(id, ctx.wiring, ctx.registry) {
+                // `process_READER` : l'item passe et le lecteur note son passage.
+                if p.kind == ProcessorKind::Reader
+                    && let Some(reader) = self.readers.get_mut(id)
+                {
+                    reader.times.push_back(ctx.now);
+                    reader.last_item = p.inputs[0];
+                }
                 let slots = self.ejectors.get(id).map_or(0, |e| e.slots.len());
                 start_new_charge(p, slots, ctx);
             }
@@ -911,7 +1127,12 @@ impl Factory {
                         filter,
                     } => {
                         if filter_accepts(filter, item)
-                            && self.receivers.try_take(building, usize::from(index), item)
+                            && self.receivers.try_take(
+                                building,
+                                usize::from(index),
+                                item,
+                                ctx.wiring,
+                            )
                         {
                             slot.item = None;
                         }
@@ -949,6 +1170,14 @@ impl Factory {
         self.receivers.processors.get(id)
     }
 
+    pub fn storage(&self, id: BuildingId) -> Option<&Storage> {
+        self.receivers.storages.get(id)
+    }
+
+    pub fn reader(&self, id: BuildingId) -> Option<&Reader> {
+        self.readers.get(id)
+    }
+
     /// Nombre total d'items présents dans l'usine (convoyeurs, slots, tampons).
     pub fn item_count(&self) -> usize {
         let belts: usize = self.paths.values().map(BeltPath::len_items).sum();
@@ -975,7 +1204,19 @@ impl Factory {
             .map(|t| t.pending.len())
             .sum();
         let miners: usize = self.miners.values().map(|m| m.chain_buffer.len()).sum();
-        belts + ejectors + processors + tunnels + miners
+        let storages: usize = self
+            .receivers
+            .storages
+            .values()
+            .map(|s| s.count as usize)
+            .sum();
+        let filters: usize = self
+            .receivers
+            .filters
+            .values()
+            .map(|f| f.lists[0].len() + f.lists[1].len())
+            .sum();
+        belts + ejectors + processors + tunnels + miners + storages + filters
     }
 
     /// Items visibles sur les convoyeurs et en sortie de bâtiment
@@ -1144,6 +1385,11 @@ fn start_new_charge(p: &mut Processor, ejector_slots: usize, ctx: &mut TickConte
                 out.push(OutItem::any(Item::Shape(ctx.registry.intern(painted))));
             }
         }
+        P::Reader => {
+            if let Some(item) = p.inputs[0] {
+                out.push(OutItem::any(item));
+            }
+        }
         P::Trash => {}
         P::Hub => {
             for i in 0..p.input_count {
@@ -1156,8 +1402,8 @@ fn start_new_charge(p: &mut Processor, ejector_slots: usize, ctx: &mut TickConte
         }
     }
 
-    // Signal `itemProduced` ; l'équilibreur passe `doNotTrack`.
-    if p.kind != P::Balancer {
+    // Signal `itemProduced` ; l'équilibreur et le lecteur passent `doNotTrack`.
+    if !matches!(p.kind, P::Balancer | P::Reader) {
         for o in &out {
             if let Item::Shape(shape) = o.item {
                 ctx.hub.analytics.on_produced(shape);
