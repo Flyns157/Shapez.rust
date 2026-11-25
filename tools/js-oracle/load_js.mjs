@@ -10,8 +10,9 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// Racine `src/js` du jeu d'origine : clone de shapez.io à côté de ce dépôt.
-export const JS_ROOT = path.resolve(here, "../../../shapez.io/src/js");
+// Racine `src/js` du jeu d'origine : variable SHAPEZ_JS_ROOT, sinon un clone de
+// shapez.io à côté de ce dépôt.
+export const JS_ROOT = path.resolve(process.env.SHAPEZ_JS_ROOT || path.resolve(here, "../../../shapez.io"), "src/js");
 
 /**
  * @param {string} relPath chemin relatif à src/js, par exemple "game/colors.js"
