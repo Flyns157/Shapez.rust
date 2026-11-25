@@ -94,7 +94,34 @@ fn import_assets(with_music: bool) -> io::Result<()> {
         println!("{src} -> assets/{dst} ({count} fichiers)");
         manifest.push_str(&format!("{src} -> assets/{dst} ({count} fichiers)\n"));
     }
+    for font in convert_fonts(&assets.join("fonts"))? {
+        println!("{font}");
+        manifest.push_str(&format!("{font}\n"));
+    }
     fs::write(assets.join("IMPORTED.txt"), manifest)
+}
+
+/// Bevy ne lit pas le WOFF2 : chaque police `.woff2` est décompressée en `.ttf` à côté.
+fn convert_fonts(dir: &Path) -> io::Result<Vec<String>> {
+    let mut done = Vec::new();
+    for entry in fs::read_dir(dir)? {
+        let path = entry?.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("woff2") {
+            continue;
+        }
+        let data = fs::read(&path)?;
+        let ttf = woff2_patched::convert_woff2_to_ttf(&mut data.as_slice())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{e:?}")))?;
+        let target = path.with_extension("ttf");
+        fs::write(&target, ttf)?;
+        done.push(format!(
+            "{} -> {} (conversion WOFF2 -> TTF)",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            target.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
+    done.sort();
+    Ok(done)
 }
 
 fn copy_tree(from: &Path, to: &Path) -> io::Result<usize> {

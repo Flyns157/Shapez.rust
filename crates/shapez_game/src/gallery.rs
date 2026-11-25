@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 use shapez_core::{Color as ShapeColor, ShapeDef};
 
-use crate::{AppState, shape_textures::ShapeTextures};
+use crate::{AppState, i18n::t, shape_textures::ShapeTextures};
 
 /// Objectifs des niveaux du jeu d'origine (`modes/levels.js`), dans l'ordre.
 const LEVEL_SHAPES: &[&str] = &[
@@ -54,21 +54,23 @@ fn gallery_shapes() -> Vec<(String, ShapeDef)> {
     let base: ShapeDef = "RuCw--Cw:----Ru--".parse().expect("forme valide");
     let [west, east] = base.cut_half();
     let ops = [
-        ("decoupe G", west),
-        ("decoupe D", east),
-        ("rotation", base.rotate_cw()),
-        ("rotation inv.", base.rotate_ccw()),
-        ("demi-tour", base.rotate_180()),
+        ("cutLeft", west),
+        ("cutRight", east),
+        ("rotate", base.rotate_cw()),
+        ("rotateCcw", base.rotate_ccw()),
+        ("rotate180", base.rotate_180()),
         (
-            "empilement",
+            "stack",
             west.stack(&"SySySySy".parse().expect("forme valide")),
         ),
-        ("peinture", base.paint(ShapeColor::Purple)),
+        ("paint", base.paint(ShapeColor::Purple)),
     ];
-    out.extend(
-        ops.into_iter()
-            .map(|(name, def)| (format!("{name} : {def}"), def)),
-    );
+    out.extend(ops.into_iter().map(|(name, def)| {
+        (
+            format!("{} : {def}", t(&format!("port.gallery.{name}"))),
+            def,
+        )
+    }));
     out
 }
 
@@ -95,7 +97,7 @@ fn spawn_gallery(
             },
         ))
         .with_children(|root| {
-            root.spawn(Text::new("Galerie des formes (Echap = menu)"));
+            root.spawn(Text::new(t("port.gallery.title")));
             root.spawn(Node {
                 flex_wrap: FlexWrap::Wrap,
                 column_gap: px(8),

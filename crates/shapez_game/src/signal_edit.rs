@@ -14,7 +14,7 @@ use bevy::{
 };
 use shapez_core::{Color as ShapeColor, Item, ShapeDef, TilePos};
 use shapez_sim::{
-    building::{BuildingKind, Layer},
+    building::{BuildingKind, Layer, Variant},
     editing::BLUEPRINT_SHAPE,
     placement::{SimCommand, SimEvent},
     wires::{parse_signal, signal_code},
@@ -22,6 +22,7 @@ use shapez_sim::{
 
 use crate::{
     AppState,
+    i18n::{building_name, t, tf},
     placement_ui::PlacementState,
     shape_textures::ShapeTextures,
     sim::{Sim, SimEventMsg, SimEventsSet},
@@ -325,9 +326,13 @@ fn update_dialog(
         .collect();
     commands.entity(entity).despawn_children();
     commands.entity(entity).with_children(|p| {
-        p.spawn(text("Signal constant", 22.0, Color::WHITE));
         p.spawn(text(
-            "Cliquez sur une valeur, ou tapez un code puis Entree (Echap : annuler).",
+            building_name(BuildingKind::ConstantSignal, Variant::Default),
+            22.0,
+            Color::WHITE,
+        ));
+        p.spawn(text(
+            t("port.signal.hint"),
             15.0,
             Color::srgb(0.75, 0.75, 0.8),
         ));
@@ -363,15 +368,22 @@ fn update_dialog(
                 });
             }
         });
-        p.spawn(text(format!("Code : {}_", edit.text), 18.0, Color::WHITE));
         p.spawn(text(
-            "1 / 0, true / false, red, green, blue, yellow, purple, cyan, white, uncolored, \
-             ou une forme (CuCuCuCu, Sr------:Cg------)",
+            tf("port.signal.code", &[("code", &edit.text)]),
+            18.0,
+            Color::WHITE,
+        ));
+        p.spawn(text(
+            t("port.signal.formats"),
             14.0,
             Color::srgb(0.6, 0.6, 0.65),
         ));
         if edit.invalid {
-            p.spawn(text("Code invalide", 16.0, Color::srgb(0.95, 0.4, 0.4)));
+            p.spawn(text(
+                t("port.signal.invalid"),
+                16.0,
+                Color::srgb(0.95, 0.4, 0.4),
+            ));
         }
     });
 }

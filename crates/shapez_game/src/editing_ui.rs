@@ -17,6 +17,7 @@ use crate::{
     AppState,
     buildings_view::building_sprite,
     camera::{CameraSet, TILE_SIZE, tile_to_world},
+    i18n::{t, tf},
     placement_ui::PlacementState,
     shop::OpenPanel,
     sim::Sim,
@@ -156,11 +157,11 @@ fn undo_keys(
         editor.history.redo(&mut sim)
     };
     if !done {
-        editor.say(if undo {
-            "Rien a annuler"
+        editor.say(t(if undo {
+            "port.editing.nothingToUndo"
         } else {
-            "Rien a retablir"
-        });
+            "port.editing.nothingToRedo"
+        }));
     }
 }
 
@@ -235,7 +236,7 @@ fn selection_actions(
                 editor.selection.clear();
                 placement.selected = None;
             }
-            None => editor.say("Aucun plan copie"),
+            None => editor.say(t("port.editing.noBlueprint")),
         }
         editor.touch();
         return;
@@ -252,7 +253,10 @@ fn selection_actions(
     if !ctrl && keys.just_pressed(KeyCode::KeyB) {
         let selection = std::mem::take(&mut editor.selection);
         sim.clear_items(&selection);
-        editor.say(format!("{} batiment(s) vide(s)", selection.len()));
+        editor.say(tf(
+            "port.editing.cleared",
+            &[("count", &selection.len().to_string())],
+        ));
         editor.touch();
         return;
     }
@@ -260,7 +264,7 @@ fn selection_actions(
     let copy = ctrl && letter(&letters, 'c');
     let cut = ctrl && letter(&letters, 'x');
     if (copy || cut) && !blueprints_unlocked(&sim) {
-        editor.say("Les plans (copier-coller) se debloquent au niveau 12");
+        editor.say(t("port.editing.blueprintsLocked"));
         return;
     }
     if copy || cut {
@@ -322,11 +326,11 @@ fn place_blueprint(
             editor.flush();
             editor.history.record(tx);
         }
-        Err(CommandError::CannotAfford) => editor.say(format!(
-            "Pas assez de formes de plan : {} requises ({BLUEPRINT_SHAPE})",
-            bp.cost()
+        Err(CommandError::CannotAfford) => editor.say(tf(
+            "port.editing.cannotAfford",
+            &[("cost", &bp.cost().to_string()), ("shape", BLUEPRINT_SHAPE)],
         )),
-        Err(_) => editor.say("Aucun batiment du plan ne peut etre pose ici"),
+        Err(_) => editor.say(t("port.editing.cannotPlace")),
     }
 }
 

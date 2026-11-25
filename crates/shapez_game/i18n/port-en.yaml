@@ -1,0 +1,66 @@
+# Texts specific to the Rust port, missing from the original game's translations.
+# Same structure as `assets/i18n/base-*.yaml`: `<name>` parameters, `<br>` line breaks.
+# A language without its own `port-<id>.yaml` falls back to this file.
+port:
+    hud:
+        status: Tick <tick> - speed x<speed> - seed <seed> (WASD/arrows, wheel, middle click; Tab = speed, Space = pause, Esc = menu)
+        goal: "<level> - deliver <shape>: <delivered> / <required>"
+        goalPerSecond: "<level> - deliver <shape>: <delivered> / <required> per second"
+        freeplayLevel: Free play, level <level>
+        wiresLayer: "[Wires layer]"
+        blueprint: "Blueprint: <count> buildings, costs <cost> blueprint shapes (stored: <stock>) - click = place, R = rotate, right click/Esc = cancel"
+        selection: "Selection: <count> buildings - Del/X = delete, B = clear items, Ctrl+C = copy, Ctrl+X = cut, Esc = cancel"
+        placing: <variant> - rotation <degrees>° (R, T = variant, Q = pipette, X/right click = delete)
+        wiresHelp: E = regular layer, click a constant signal = change its value, click a lever = toggle, Q = pipette, X/right click = delete
+        help: Q = pipette, X/right click = delete, Ctrl+drag = select, Ctrl+Z/Y = undo/redo, Ctrl+V = paste, M = marker, F = upgrades, G = statistics
+        helpWires: ", E = wires layer"
+    notify:
+        newBuildings: "New: <list>"
+        buildingKey: <name> (key <key>)
+        buildingKeyWires: <name> (key <key>, wires layer with E)
+        upgradeBought: "Upgrade bought: <name>, <tier>"
+    editing:
+        nothingToUndo: Nothing to undo
+        nothingToRedo: Nothing to redo
+        noBlueprint: No blueprint copied
+        cleared: Items cleared from <count> building(s)
+        blueprintsLocked: Blueprints (copy and paste) unlock at level 12
+        cannotAfford: "Not enough blueprint shapes: <cost> required (<shape>)"
+        cannotPlace: No building of the blueprint can be placed here
+    menu:
+        shapes: Shapes
+        savegames: Savegames
+        unreadable: <name> - unreadable
+        confirm: Confirm
+        folder: "Folder: <path>"
+        noSaveFolder: no savegame folder
+        loadFailed: "Could not load <name>: <error>"
+        deleteFailed: "Could not delete <name>: <error>"
+    time:
+        minutes: <minutes> min
+        hoursMinutes: <hours> h <minutes> min
+    marks:
+        help: (M = add, Shift+click = remove)
+        pinned: Pinned shapes (Shift+click = remove)
+    shop:
+        help: (F or Esc to close; click a shape to pin it)
+        tier: "<name> - <tier>: <from> -> <to>"
+        maxTier: <name> - maximum level (<mult>)
+        pinned: (pinned)
+    statistics:
+        help: (G to close)
+        empty: "Nothing yet: rates cover the last 10 seconds."
+    signal:
+        hint: Click a value, or type a code then Enter (Esc = cancel).
+        code: "Code: <code>_"
+        formats: 1 / 0, true / false, red, green, blue, yellow, purple, cyan, white, uncolored, or a shape (CuCuCuCu, Sr------:Cg------)
+        invalid: Invalid code
+    gallery:
+        title: Shape gallery (Esc = menu)
+        cutLeft: cut left
+        cutRight: cut right
+        rotate: rotate
+        rotateCcw: rotate counter-clockwise
+        rotate180: rotate 180°
+        stack: stack
+        paint: paint

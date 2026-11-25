@@ -16,73 +16,49 @@ use crate::{
     buildings_view::building_sprite,
     camera::{CameraSet, world_to_tile},
     editing_ui::{EditingSet, Editor},
+    i18n::{building_name, t, tf},
     shop::OpenPanel,
     sim::Sim,
     wires_ui::{ActiveLayer, WiresUiSet},
 };
 
-/// Entrée de barre d'outils : touche, libellé de la touche, bâtiment, nom.
-pub type ToolbarEntry = (KeyCode, &'static str, BuildingKind, &'static str);
+/// Entrée de barre d'outils : touche, libellé de la touche, bâtiment.
+pub type ToolbarEntry = (KeyCode, &'static str, BuildingKind);
 
 /// Barre de la couche normale (`HUDBuildingsToolbar`, touches du JS).
 pub const REGULAR_TOOLBAR: [ToolbarEntry; 15] = [
-    (KeyCode::Digit1, "1", BuildingKind::Belt, "Convoyeur"),
-    (KeyCode::Digit2, "2", BuildingKind::Balancer, "Equilibreur"),
-    (
-        KeyCode::Digit3,
-        "3",
-        BuildingKind::UndergroundBelt,
-        "Tunnel",
-    ),
-    (KeyCode::Digit4, "4", BuildingKind::Miner, "Extracteur"),
-    (KeyCode::Digit5, "5", BuildingKind::Cutter, "Decoupeur"),
-    (KeyCode::Digit6, "6", BuildingKind::Rotater, "Rotateur"),
-    (KeyCode::Digit7, "7", BuildingKind::Stacker, "Empileur"),
-    (KeyCode::Digit8, "8", BuildingKind::Mixer, "Melangeur"),
-    (KeyCode::Digit9, "9", BuildingKind::Painter, "Peintre"),
-    (KeyCode::Digit0, "0", BuildingKind::Trash, "Poubelle"),
-    (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
-    (KeyCode::KeyU, "U", BuildingKind::Reader, "Lecteur"),
-    (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
-    (KeyCode::KeyO, "O", BuildingKind::Filter, "Filtre"),
-    (KeyCode::KeyP, "P", BuildingKind::Display, "Afficheur"),
+    (KeyCode::Digit1, "1", BuildingKind::Belt),
+    (KeyCode::Digit2, "2", BuildingKind::Balancer),
+    (KeyCode::Digit3, "3", BuildingKind::UndergroundBelt),
+    (KeyCode::Digit4, "4", BuildingKind::Miner),
+    (KeyCode::Digit5, "5", BuildingKind::Cutter),
+    (KeyCode::Digit6, "6", BuildingKind::Rotater),
+    (KeyCode::Digit7, "7", BuildingKind::Stacker),
+    (KeyCode::Digit8, "8", BuildingKind::Mixer),
+    (KeyCode::Digit9, "9", BuildingKind::Painter),
+    (KeyCode::Digit0, "0", BuildingKind::Trash),
+    (KeyCode::KeyY, "Y", BuildingKind::Storage),
+    (KeyCode::KeyU, "U", BuildingKind::Reader),
+    (KeyCode::KeyI, "I", BuildingKind::Lever),
+    (KeyCode::KeyO, "O", BuildingKind::Filter),
+    (KeyCode::KeyP, "P", BuildingKind::Display),
 ];
 
 /// Barre de la couche wires (`HUDWiresToolbar`).
 pub const WIRES_TOOLBAR: [ToolbarEntry; 13] = [
-    (KeyCode::Digit1, "1", BuildingKind::Wire, "Cable"),
-    (KeyCode::Digit2, "2", BuildingKind::WireTunnel, "Croisement"),
-    (
-        KeyCode::Digit3,
-        "3",
-        BuildingKind::ConstantSignal,
-        "Signal constant",
-    ),
-    (
-        KeyCode::Digit4,
-        "4",
-        BuildingKind::LogicGate,
-        "Porte logique",
-    ),
-    (
-        KeyCode::Digit5,
-        "5",
-        BuildingKind::VirtualProcessor,
-        "Processeur virtuel",
-    ),
-    (KeyCode::Digit6, "6", BuildingKind::Analyzer, "Analyseur"),
-    (
-        KeyCode::Digit7,
-        "7",
-        BuildingKind::Comparator,
-        "Comparateur",
-    ),
-    (KeyCode::Digit8, "8", BuildingKind::Transistor, "Transistor"),
-    (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
-    (KeyCode::KeyU, "U", BuildingKind::Reader, "Lecteur"),
-    (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
-    (KeyCode::KeyO, "O", BuildingKind::Filter, "Filtre"),
-    (KeyCode::KeyP, "P", BuildingKind::Display, "Afficheur"),
+    (KeyCode::Digit1, "1", BuildingKind::Wire),
+    (KeyCode::Digit2, "2", BuildingKind::WireTunnel),
+    (KeyCode::Digit3, "3", BuildingKind::ConstantSignal),
+    (KeyCode::Digit4, "4", BuildingKind::LogicGate),
+    (KeyCode::Digit5, "5", BuildingKind::VirtualProcessor),
+    (KeyCode::Digit6, "6", BuildingKind::Analyzer),
+    (KeyCode::Digit7, "7", BuildingKind::Comparator),
+    (KeyCode::Digit8, "8", BuildingKind::Transistor),
+    (KeyCode::KeyY, "Y", BuildingKind::Storage),
+    (KeyCode::KeyU, "U", BuildingKind::Reader),
+    (KeyCode::KeyI, "I", BuildingKind::Lever),
+    (KeyCode::KeyO, "O", BuildingKind::Filter),
+    (KeyCode::KeyP, "P", BuildingKind::Display),
 ];
 
 /// Barre d'outils de la couche.
@@ -93,12 +69,12 @@ pub fn toolbar(layer: Layer) -> &'static [ToolbarEntry] {
     }
 }
 
-/// Touche et nom d'un bâtiment, sur la barre de sa couche.
-pub fn toolbar_entry(kind: BuildingKind) -> Option<(&'static str, &'static str)> {
+/// Touche d'un bâtiment, sur la barre de sa couche.
+pub fn toolbar_key(kind: BuildingKind) -> Option<&'static str> {
     toolbar(kind.layer())
         .iter()
-        .find(|(_, _, k, _)| *k == kind)
-        .map(|&(_, key, _, name)| (key, name))
+        .find(|(_, _, k)| *k == kind)
+        .map(|&(_, key, _)| key)
 }
 
 /// Systèmes de pose, après les interactions de la couche wires.
@@ -205,7 +181,7 @@ fn selection_keys(
     layer: Res<ActiveLayer>,
     mut state: ResMut<PlacementState>,
 ) {
-    for &(key, _, kind, _) in toolbar(layer.0) {
+    for &(key, _, kind) in toolbar(layer.0) {
         if keys.just_pressed(key) && is_unlocked(kind, &sim.hub) {
             // Retaper la même touche désélectionne, comme dans le JS.
             if state.selected == Some(kind) {
@@ -410,9 +386,11 @@ fn update_toolbar(
 ) {
     let mut s = String::new();
     if layer.0 == Layer::Wires {
-        s.push_str("[Couche cables]  ");
+        s.push_str(&t("port.hud.wiresLayer"));
+        s.push_str("  ");
     }
-    for (_, key, kind, name) in toolbar(layer.0) {
+    for (_, key, kind) in toolbar(layer.0) {
+        let name = building_name(*kind, Variant::Default);
         // Comme dans le JS, les bâtiments verrouillés n'apparaissent pas.
         if !is_unlocked(*kind, &sim.hub) {
             continue;
@@ -427,35 +405,42 @@ fn update_toolbar(
         let stock = sim
             .hub
             .stored_by_key(shapez_sim::editing::BLUEPRINT_SHAPE, &sim.registry);
-        s.push_str(&format!(
-            "\nPlan : {} batiments, cout {} formes de plan (en stock : {stock}) - clic = poser, R = tourner, clic droit/Echap = annuler",
-            bp.len(),
-            bp.cost()
+        s.push('\n');
+        s.push_str(&tf(
+            "port.hud.blueprint",
+            &[
+                ("count", &bp.len().to_string()),
+                ("cost", &bp.cost().to_string()),
+                ("stock", &stock.to_string()),
+            ],
         ));
     } else if !editor.selection.is_empty() {
-        s.push_str(&format!(
-            "\nSelection : {} batiments - Suppr/X = supprimer, B = vider, Ctrl+C = copier, Ctrl+X = couper, Echap = annuler",
-            editor.selection.len()
+        s.push('\n');
+        s.push_str(&tf(
+            "port.hud.selection",
+            &[("count", &editor.selection.len().to_string())],
         ));
     } else if let Some(kind) = state.selected {
         let variant = current_variant(kind, state.variant_index, &sim);
-        s.push_str(&format!(
-            "\n{variant:?} - rotation {} (R, T = variante, Q = pipette, X/clic droit = supprimer)",
-            state.rotation.degrees()
+        s.push('\n');
+        s.push_str(&tf(
+            "port.hud.placing",
+            &[
+                ("variant", &building_name(kind, variant)),
+                ("degrees", &state.rotation.degrees().to_string()),
+            ],
         ));
     } else if layer.0 == Layer::Wires {
-        s.push_str(
-            "\nE = couche normale, clic sur un signal constant = changer sa valeur, clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer",
-        );
+        s.push('\n');
+        s.push_str(&t("port.hud.wiresHelp"));
     } else {
-        s.push_str(
-            "\nQ = pipette, X/clic droit = supprimer, Ctrl+glisser = selectionner, Ctrl+Z/Y = annuler/retablir, Ctrl+V = coller, M = repere, F = ameliorations, G = statistiques",
-        );
+        s.push('\n');
+        s.push_str(&t("port.hud.help"));
         if sim
             .hub
             .is_reward_unlocked(shapez_sim::hub_goals::Reward::WiresPainterAndLevers)
         {
-            s.push_str(", E = couche cables");
+            s.push_str(&t("port.hud.helpWires"));
         }
     }
     if let Some((message, _)) = &editor.message {
