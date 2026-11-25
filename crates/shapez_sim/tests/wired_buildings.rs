@@ -199,3 +199,33 @@ fn quad_painter_only_paints_quarters_with_a_true_signal() {
     let painted = circle(&mut world, "CrCuCgCu");
     assert_eq!(items_on(&world, 0, -1), [painted]);
 }
+
+#[test]
+fn clearing_items_empties_belts_and_buildings_but_not_storage() {
+    let mut world = filter_world(Some(RED));
+    let storage = place(&mut world, at(BuildingKind::Storage, 6, 0, Rotation::R0));
+    place(&mut world, at(BuildingKind::Belt, 6, 2, Rotation::R0));
+    for _ in 0..4 {
+        world.inject_item(TilePos::new(6, 2), GREEN);
+        for item in [RED, GREEN] {
+            world.inject_item(TilePos::new(0, 1), item);
+        }
+        world.advance(TICKS_PER_SECOND / 2);
+    }
+    world.inject_item(TilePos::new(0, 1), RED);
+    world.inject_item(TilePos::new(6, 2), GREEN);
+    let stored = world.factory.storage(storage).unwrap().count as usize;
+    assert!(world.factory.item_count() > stored + 2);
+
+    let all: Vec<_> = world.buildings.iter().map(|(id, _)| id).collect();
+    world.clear_items(&all);
+    assert_eq!(world.factory.item_count(), stored);
+    assert_eq!(
+        world.factory.storage(storage).unwrap().count as usize,
+        stored
+    );
+    // L'usine repart normalement.
+    world.inject_item(TilePos::new(0, 1), RED);
+    world.advance(3 * TICKS_PER_SECOND);
+    assert_eq!(items_on(&world, 0, -1), [RED]);
+}

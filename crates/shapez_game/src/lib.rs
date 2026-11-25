@@ -17,8 +17,10 @@ pub mod placement_ui;
 pub mod saves;
 pub mod shape_textures;
 pub mod shop;
+pub mod signal_edit;
 pub mod sim;
 pub mod state;
+pub mod underlays;
 pub mod wires_ui;
 
 pub use state::AppState;
@@ -49,6 +51,8 @@ impl Plugin for GamePlugin {
             marks_ui::MarksUiPlugin,
             wires_ui::WiresUiPlugin,
             overlays::OverlaysPlugin,
+            underlays::UnderlaysPlugin,
+            signal_edit::SignalEditPlugin,
         ))
         .add_systems(Startup, spawn_camera);
     }

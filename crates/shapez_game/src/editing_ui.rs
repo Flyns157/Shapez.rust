@@ -1,6 +1,6 @@
 //! Édition de masse : annuler et rétablir (Ctrl+Z, Ctrl+Y), sélection au Ctrl+glisser
-//! (Maj pour ajouter), suppression (Suppr ou X), copier (Ctrl+C), couper (Ctrl+X),
-//! coller (Ctrl+V) avec rotation (R) ; port simplifié de `hud/parts/mass_selector.js`
+//! (Maj pour ajouter), suppression (Suppr ou X), vidage des items (B), copier (Ctrl+C),
+//! couper (Ctrl+X), coller (Ctrl+V) avec rotation (R) ; port simplifié de `hud/parts/mass_selector.js`
 //! et `hud/parts/blueprint_placer.js`.
 //!
 //! Les raccourcis à lettre suivent la touche logique : Ctrl+Z annule aussi sur un
@@ -245,6 +245,14 @@ fn selection_actions(
     }
     if keys.just_pressed(KeyCode::Escape) {
         editor.selection.clear();
+        editor.touch();
+        return;
+    }
+    // `massSelectClear` : vide les items de la sélection, puis l'abandonne.
+    if !ctrl && keys.just_pressed(KeyCode::KeyB) {
+        let selection = std::mem::take(&mut editor.selection);
+        sim.clear_items(&selection);
+        editor.say(format!("{} batiment(s) vide(s)", selection.len()));
         editor.touch();
         return;
     }

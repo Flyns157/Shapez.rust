@@ -127,6 +127,13 @@ impl BeltPath {
         })
     }
 
+    /// `clearAllItems`.
+    pub fn clear_items(&mut self) {
+        self.items.clear();
+        self.spacing_to_first = self.total_length;
+        self.num_compressed = 0;
+    }
+
     /// `onPathChanged` : à appeler quand la cible a été recalculée.
     pub fn on_path_changed(&mut self, target: PathTarget) {
         self.target = target;

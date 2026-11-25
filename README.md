@@ -220,6 +220,7 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 |---|---|
 | Sélectionner une zone | Ctrl + glisser (ajouter Maj pour étendre la sélection) |
 | Supprimer la sélection | Suppr ou X |
+| Vider les items de la sélection | B |
 | Copier, couper, coller un plan | Ctrl+C, Ctrl+X, Ctrl+V (débloqué au niveau 12, payé en formes de plan) |
 | Tourner le plan | R |
 | Annuler, rétablir | Ctrl+Z, Ctrl+Y |
@@ -227,7 +228,7 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 | Épingler une forme du shop | clic sur la forme |
 | Changer de couche (normale, câbles) | E (couche câbles débloquée en terminant le niveau 20) |
 | Basculer un levier | clic sur le levier |
-| Changer le signal d'un émetteur constant | clic dessus sur la couche câbles (Maj : en arrière) |
+| Changer le signal d'un émetteur constant | clic dessus sur la couche câbles, puis choisir une valeur ou taper un code (`1`, `false`, `red`, `CuCuCuCu`…) et Entrée |
 | Lecteur, filtre, afficheur | U, O, P (couche normale ou câbles) |
 | Processeur virtuel, analyseur, comparateur | 5, 6, 7 sur la couche câbles (T : variante du processeur) |
 

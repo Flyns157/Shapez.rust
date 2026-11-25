@@ -58,6 +58,34 @@ pub fn is_truthy(item: Option<Item>) -> bool {
     }
 }
 
+/// `HUDConstantSignalEdit.parseSignalCode` : nom de couleur, `1` / `true`, `0` /
+/// `false` (sans tenir compte de la casse), ou code court de forme.
+pub fn parse_signal(code: &str, registry: &mut ShapeRegistry) -> Option<Item> {
+    let code = code.trim();
+    let lower = code.to_lowercase();
+    if let Some(color) = Color::from_js_name(&lower) {
+        return Some(Item::Color(color));
+    }
+    if code == "1" || lower == "true" {
+        return Some(Item::Bool(true));
+    }
+    if code == "0" || lower == "false" {
+        return Some(Item::Bool(false));
+    }
+    ShapeDef::from_short_key(code)
+        .ok()
+        .map(|def| Item::Shape(registry.intern(def)))
+}
+
+/// Code d'un signal (`getAsCopyableKey`), lisible par [`parse_signal`].
+pub fn signal_code(item: Item, registry: &ShapeRegistry) -> String {
+    match item {
+        Item::Bool(b) => if b { "1" } else { "0" }.to_string(),
+        Item::Color(c) => c.js_name().to_string(),
+        Item::Shape(id) => registry.get(id).short_key(),
+    }
+}
+
 /// Valeurs des pins et réseaux de la couche wires.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Wiring {
@@ -568,6 +596,33 @@ mod tests {
             gate(BuildingKind::Transistor, Variant::Default, &[b(false), red]),
             None
         );
+    }
+
+    #[test]
+    fn signal_codes_parse_like_the_js() {
+        let mut reg = ShapeRegistry::new();
+        assert_eq!(
+            parse_signal(" Red ", &mut reg),
+            Some(Item::Color(Color::Red))
+        );
+        assert_eq!(
+            parse_signal("uncolored", &mut reg),
+            Some(Item::Color(Color::Uncolored))
+        );
+        assert_eq!(parse_signal("TRUE", &mut reg), Some(Item::Bool(true)));
+        assert_eq!(parse_signal("0", &mut reg), Some(Item::Bool(false)));
+        assert_eq!(
+            parse_signal("cucucucu", &mut reg),
+            None,
+            "les formes respectent la casse"
+        );
+        assert_eq!(parse_signal("", &mut reg), None);
+        let shape = parse_signal("CuCuCuCu:Sr------", &mut reg).unwrap();
+        assert_eq!(signal_code(shape, &reg), "CuCuCuCu:Sr------");
+        for item in [Item::Bool(false), Item::Color(Color::Cyan), shape] {
+            let code = signal_code(item, &reg);
+            assert_eq!(parse_signal(&code, &mut reg), Some(item));
+        }
     }
 
     #[test]
