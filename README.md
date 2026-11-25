@@ -1,9 +1,285 @@
 # shapez-rs
 
-Réécriture de shapez.io en Rust avec [Bevy](https://bevy.org) 0.20. Le plan complet est
-dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
+shapez-rs est une réécriture en Rust, avec le moteur [Bevy](https://bevy.org) 0.20, du jeu
+d'automatisation [shapez.io](https://github.com/tobspr-games/shapez.io) (shapez 1). La
+simulation est portée depuis le code JavaScript d'origine et vérifiée contre lui. Le plan
+complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
 
-## Organisation
+## Sommaire
+
+- [Démarrer](#démarrer)
+  - [1. Installer Rust](#1-installer-rust)
+  - [2. Installer les dépendances système](#2-installer-les-dépendances-système)
+  - [3. Récupérer le code](#3-récupérer-le-code)
+  - [4. Importer les assets du jeu d'origine](#4-importer-les-assets-du-jeu-dorigine)
+  - [5. Lancer le jeu](#5-lancer-le-jeu)
+  - [6. Lancer les tests](#6-lancer-les-tests)
+- [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
+- [Variables d'environnement](#variables-denvironnement)
+- [Sauvegardes](#sauvegardes)
+- [Organisation du code](#organisation-du-code)
+- [Oracle JS](#oracle-js)
+- [Licence](#licence)
+
+## Démarrer
+
+En résumé, il faut : Rust via `rustup`, les dépendances système de Bevy pour votre
+plateforme, ce dépôt, et un clone du **code source** de shapez.io pour en copier les
+images, sons et traductions. La première compilation prend plusieurs minutes, car Bevy
+est volumineux ; les suivantes sont rapides.
+
+### 1. Installer Rust
+
+Installez [rustup](https://rustup.rs). Vous n'avez pas besoin de choisir une version de
+Rust : le fichier [`rust-toolchain.toml`](rust-toolchain.toml) fixe la version utilisée
+(1.97.1, avec `rustfmt` et `clippy`), et `rustup` la télécharge automatiquement à la
+première commande `cargo` lancée dans le dépôt.
+
+Linux et macOS :
+
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Windows : téléchargez et lancez `rustup-init.exe` depuis [rustup.rs](https://rustup.rs),
+ou utilisez winget :
+
+```powershell
+winget install --id Rustlang.Rustup
+```
+
+Sous Windows, lisez d'abord la section [Windows](#windows) ci-dessous : il faut choisir
+entre les outils MSVC et GNU avant de compiler.
+
+### 2. Installer les dépendances système
+
+#### Linux
+
+Bevy a besoin d'un compilateur C, de `pkg-config`, des en-têtes ALSA (son), udev
+(manettes) et Wayland/xkbcommon (fenêtre et clavier). Il faut aussi un pilote graphique
+compatible Vulkan, déjà présent sur la plupart des bureaux (paquet Mesa).
+
+Debian, Ubuntu et dérivées (ce sont les paquets installés par la CI) :
+
+```sh
+sudo apt install build-essential pkg-config libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-0
+```
+
+Fedora :
+
+```sh
+sudo dnf install gcc-c++ pkgconf-pkg-config alsa-lib-devel systemd-devel wayland-devel libxkbcommon-devel libxkbcommon-x11
+```
+
+Arch Linux :
+
+```sh
+sudo pacman -S --needed base-devel alsa-lib systemd-libs wayland libxkbcommon libxkbcommon-x11
+```
+
+Pour d'autres distributions, la liste de référence est
+[`linux_dependencies.md`](https://github.com/bevyengine/bevy/blob/main/docs/linux_dependencies.md)
+dans le dépôt de Bevy.
+
+#### macOS
+
+Seuls les outils en ligne de commande de Xcode sont nécessaires :
+
+```sh
+xcode-select --install
+```
+
+#### Windows
+
+Rust propose deux chaînes de compilation sous Windows. **MSVC est recommandée** : c'est la
+cible par défaut de `rustup` et celle que Bevy teste en priorité.
+
+**Option A : MSVC (recommandée)**
+
+1. Installez les *Build Tools for Visual Studio 2022* avec la charge de travail
+   « Développement Desktop en C++ » (elle inclut le compilateur MSVC et le SDK Windows).
+   En une commande :
+
+   ```powershell
+   winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+   ```
+
+   Si Visual Studio est déjà installé, ajoutez simplement cette charge de travail depuis
+   Visual Studio Installer.
+2. Installez `rustup` en gardant le choix par défaut (`x86_64-pc-windows-msvc`).
+3. Ouvrez un **nouveau** terminal pour que `cargo` soit dans le `PATH`.
+
+**Option B : GNU (MinGW)**
+
+À utiliser si vous ne voulez pas installer les outils Microsoft.
+
+1. Installez [MSYS2](https://www.msys2.org), puis, dans le terminal « MSYS2 UCRT64 » :
+
+   ```sh
+   pacman -S --needed mingw-w64-ucrt-x86_64-gcc
+   ```
+
+2. Ajoutez `C:\msys64\ucrt64\bin` au `PATH` de Windows.
+3. Indiquez à `rustup` d'utiliser la cible GNU par défaut :
+
+   ```powershell
+   rustup set default-host x86_64-pc-windows-gnu
+   ```
+
+Avec GNU, n'utilisez pas `--features dev` : le lien dynamique de Bevy dépasse la limite de
+symboles exportés d'une DLL MinGW.
+
+### 3. Récupérer le code
+
+Le jeu n'embarque pas les images, sons et traductions de shapez.io : on les copie depuis
+le **dépôt de code source** de shapez.io (le dossier qui contient `res_raw/`, `res/` et
+`translations/`), et non depuis une version installée du jeu (Steam ou autre), qui ne
+contient pas ces fichiers sous cette forme.
+
+Le plus simple est de cloner les deux dépôts côte à côte, dans un même dossier parent :
+
+```sh
+mkdir shapez && cd shapez
+git clone https://github.com/Flyns157/Shapez.rust.git
+git clone https://github.com/Flyns157/shapez.io.git
+cd Shapez.rust
+```
+
+Vous obtenez cette arborescence, où le clone de shapez.io est trouvé automatiquement à
+l'emplacement par défaut `../shapez.io` :
+
+```text
+shapez/
+├── Shapez.rust/   ← ce dépôt, où l'on lance les commandes
+└── shapez.io/     ← code source du jeu d'origine
+```
+
+Si vous placez le clone ailleurs, indiquez son chemin dans la variable `SHAPEZ_JS_ROOT`
+(voir [Variables d'environnement](#variables-denvironnement)). Un clone placé
+directement dans ce dépôt, sous `Shapez.rust/shapez.io/`, est ignoré par git ; il faut
+alors `SHAPEZ_JS_ROOT=shapez.io`.
+
+> [!NOTE]
+> Le clone de shapez.io n'est utile que pour importer les assets et pour régénérer les
+> vecteurs de test de l'[oracle JS](#oracle-js). La compilation, les tests (`cargo test`)
+> et la CI n'en ont pas besoin : les vecteurs de test sont versionnés dans ce dépôt.
+
+### 4. Importer les assets du jeu d'origine
+
+```sh
+cargo xtask import-assets
+```
+
+Cette commande copie les sprites, effets sonores, polices et traductions dans `assets/`
+(dossier ignoré par git) et liste ce qui a été copié dans `assets/IMPORTED.txt`. Ajoutez
+`--music` pour importer aussi les musiques, qui pèsent environ 185 Mo :
+
+```sh
+cargo xtask import-assets --music
+```
+
+Avec un clone placé ailleurs, définissez `SHAPEZ_JS_ROOT` pour la commande :
+
+```sh
+SHAPEZ_JS_ROOT=/chemin/vers/shapez.io cargo xtask import-assets
+```
+
+```powershell
+$env:SHAPEZ_JS_ROOT = "C:\chemin\vers\shapez.io"
+cargo xtask import-assets
+```
+
+Si le clone est introuvable, la commande s'arrête avec le message « jeu d'origine
+introuvable » et le chemin qu'elle a essayé.
+
+### 5. Lancer le jeu
+
+```sh
+cargo run
+```
+
+La fenêtre du jeu s'ouvre sur le menu principal. Pour le développement, la feature `dev`
+active le lien dynamique de Bevy (recompilation plus rapide) et ses outils de debug :
+
+```sh
+cargo run --features dev
+```
+
+Pour une version optimisée :
+
+```sh
+cargo run --release
+```
+
+Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Windows).
+
+### 6. Lancer les tests
+
+```sh
+cargo test --workspace
+```
+
+Avant de proposer une modification, lancez aussi les mêmes vérifications que la CI :
+
+```sh
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+## Compiler pour Windows depuis Linux
+
+On peut produire un `.exe` Windows depuis Linux avec la cible GNU et MinGW. Exemple sous
+Debian ou Ubuntu :
+
+```sh
+sudo apt install gcc-mingw-w64-x86-64
+rustup target add x86_64-pc-windows-gnu      # à lancer dans le dépôt : ajoute la cible à la toolchain 1.97.1
+cargo build --release --target x86_64-pc-windows-gnu -p shapez_game
+```
+
+Le binaire est dans `target/x86_64-pc-windows-gnu/release/shapez_game.exe`.
+
+Pour le lancer sur un PC Windows, copiez à côté de lui le dossier `assets/` (rempli par
+`cargo xtask import-assets`), puis indiquez son emplacement avec `SHAPEZ_ASSETS`. C'est
+nécessaire car le chemin des assets compilé par défaut est celui de la machine Linux :
+
+```powershell
+$env:SHAPEZ_ASSETS = "$PWD\assets"
+.\shapez_game.exe
+```
+
+N'utilisez pas `--features dev` pour une compilation croisée : le binaire dépendrait de
+DLL qui ne sont pas distribuées avec lui.
+
+## Variables d'environnement
+
+Toutes sont facultatives.
+
+| Variable | Utilisée par | Effet | Valeur par défaut |
+|---|---|---|---|
+| `SHAPEZ_JS_ROOT` | `cargo xtask import-assets`, oracle JS | Chemin du clone du code source de shapez.io | `../shapez.io` |
+| `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
+| `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
+| `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
+| `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
+
+Sous Linux et macOS, on définit une variable pour une seule commande en la plaçant
+devant : `SHAPEZ_SEED=1234 cargo run`. Sous Windows (PowerShell), on la définit pour la
+session du terminal : `$env:SHAPEZ_SEED = "1234"`, puis `cargo run`.
+
+## Sauvegardes
+
+Les parties sont sauvegardées automatiquement toutes les 2 minutes et en quittant. Le
+menu principal liste les sauvegardes existantes. Elles sont rangées dans le dossier de
+données de la plateforme, ou dans `SHAPEZ_SAVE_DIR` s'il est défini :
+
+| Plateforme | Dossier |
+|---|---|
+| Linux | `~/.local/share/shapez-rs/saves` |
+| macOS | `~/Library/Application Support/shapez-rs/saves` |
+| Windows | `%APPDATA%\shapez-rs\data\saves` |
+
+## Organisation du code
 
 | Crate | Rôle | Dépend de Bevy |
 |---|---|---|
@@ -12,41 +288,31 @@ dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
 | `crates/shapez_sim` | Simulation déterministe à 60 ticks/s, en entiers ; génération de carte identique au JS | non |
 | `crates/shapez_save` | Sauvegardes : en-tête, état JSON compressé zstd, CRC32, migrations, dossier | non |
 | `crates/shapez_game` | Binaire Bevy : rendu, entrées, UI, autosave | oui |
-| `xtask` | Tâches de développement | non |
+| `xtask` | Tâches de développement (`cargo xtask import-assets`) | non |
 
 La crate `shapez_data` du plan sera ajoutée avec le jalon qui en a besoin.
 
-Les parties sont sauvegardées toutes les 2 minutes et en quittant, dans
-`~/.local/share/shapez-rs/saves` sous Linux (dossier de données de la plateforme
-ailleurs), ou dans le dossier indiqué par `SHAPEZ_SAVE_DIR`.
-
-## Démarrer
-
-Prérequis Linux : `libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev`.
-
-```sh
-git clone https://github.com/Flyns157/shapez.io ../shapez.io   # jeu d'origine : assets et oracle
-cargo xtask import-assets        # copie sprites, sons, polices et traductions dans assets/
-cargo run                        # ouvre la fenêtre du jeu (SHAPEZ_SEED=1234 pour fixer la carte)
-cargo run --features dev         # idem, avec lien dynamique et outils de debug
-cargo test --workspace
-```
-
-`cargo xtask import-assets --music` importe aussi les musiques (~185 Mo). Le jeu d'origine
-est cherché dans `../shapez.io`, ou dans le dossier indiqué par `SHAPEZ_JS_ROOT`.
-
 ## Oracle JS
 
-Le code JS d'origine sert de spécification. `tools/js-oracle/` l'exécute dans Node
-(sans webpack) pour produire des vecteurs de test versionnés ; la CI n'a pas besoin de Node.
-Le code JS est cherché dans `../shapez.io`, ou dans `SHAPEZ_JS_ROOT=/chemin/vers/shapez.io`.
+Le code JavaScript d'origine sert de spécification. Les scripts de `tools/js-oracle/`
+l'exécutent dans Node (sans webpack) pour produire des vecteurs de test, qui sont
+versionnés dans le dépôt. Seules les personnes qui régénèrent ces vecteurs ont besoin de
+Node et du clone de shapez.io ; la CI n'en a pas besoin. Le code JS est cherché dans
+`../shapez.io/src/js`, ou dans `$SHAPEZ_JS_ROOT/src/js`.
+
+Régénérer les vecteurs versionnés :
 
 ```sh
-node tools/js-oracle/shapes.mjs > crates/shapez_core/tests/golden/shapes.json   # 2 000 cas
+node tools/js-oracle/shapes.mjs > crates/shapez_core/tests/golden/shapes.json            # 2 000 cas
 node tools/js-oracle/rng.mjs > crates/shapez_core/tests/golden/alea.json
-node tools/js-oracle/map.mjs > crates/shapez_sim/tests/golden/map.json   # chunks (-15..15)², 3 graines
-node tools/js-oracle/belts.mjs > crates/shapez_sim/tests/golden/belts.json   # 100 chemins de convoyeurs
+node tools/js-oracle/map.mjs > crates/shapez_sim/tests/golden/map.json                   # chunks (-15..15)², 3 graines
+node tools/js-oracle/belts.mjs > crates/shapez_sim/tests/golden/belts.json               # 100 chemins de convoyeurs
 node tools/js-oracle/progression.mjs > crates/shapez_sim/tests/golden/progression.json   # paliers et freeplay
+```
+
+Vérifier un jeu de cas plus grand, sans le versionner :
+
+```sh
 node tools/js-oracle/shapes.mjs 10000 > /tmp/shapes.json
 SHAPEZ_GOLDEN_SHAPES=/tmp/shapes.json cargo test -p shapez_core --test golden_shapes
 node tools/js-oracle/belts.mjs 1500 > /tmp/belts.json
@@ -56,3 +322,5 @@ SHAPEZ_GOLDEN_BELTS=/tmp/belts.json cargo test -p shapez_sim --test golden_belts
 ## Licence
 
 GPL-3.0-or-later, comme le jeu d'origine. Voir [`NOTICE`](NOTICE) et [`LICENSE`](LICENSE).
+« shapez » est une marque de tobspr Games ; ce projet n'est ni affilié ni approuvé par
+tobspr Games.
