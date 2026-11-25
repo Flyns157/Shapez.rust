@@ -147,7 +147,7 @@ fn js_round(x: f64) -> f64 {
 }
 
 /// `findNiceIntegerValue`.
-fn find_nice_integer_value(num: f64) -> f64 {
+pub(crate) fn find_nice_integer_value(num: f64) -> f64 {
     find_nice_value(num).ceil()
 }
 

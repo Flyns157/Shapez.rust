@@ -209,9 +209,23 @@ impl HubGoals {
         };
     }
 
-    fn stored_by_key(&self, key: &str, registry: &ShapeRegistry) -> u64 {
-        let def = ShapeDef::from_short_key(key).expect("forme d'amélioration valide");
+    /// `getShapesStoredByKey` (le code court doit être valide).
+    pub fn stored_by_key(&self, key: &str, registry: &ShapeRegistry) -> u64 {
+        let def = ShapeDef::from_short_key(key).expect("code court valide");
         registry.find(&def).map_or(0, |id| self.stored(id))
+    }
+
+    /// `takeShapeByKey` : retire `amount` formes du stock, si elles y sont.
+    pub fn take_by_key(&mut self, key: &str, amount: u64, registry: &ShapeRegistry) -> bool {
+        if self.stored_by_key(key, registry) < amount {
+            return false;
+        }
+        if amount > 0 {
+            let def = ShapeDef::from_short_key(key).expect("code court valide");
+            let id = registry.find(&def).expect("forme en stock");
+            *self.stored.get_mut(&id).expect("forme en stock") -= amount;
+        }
+        true
     }
 
     /// `canUnlockUpgrade`.
