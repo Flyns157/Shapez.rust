@@ -104,6 +104,8 @@ pub enum SimCommand {
     Remove {
         tile: TilePos,
     },
+    /// Achète le prochain palier d'une famille d'améliorations.
+    UnlockUpgrade(crate::upgrades::UpgradeKind),
 }
 
 /// Événement produit par la simulation, consommé par le rendu, l'audio…
@@ -124,6 +126,11 @@ pub enum SimEvent {
     },
     /// Objectif du hub atteint.
     LevelCompleted(crate::hub_goals::LevelCompleted),
+    /// Palier d'amélioration acheté ; `level` est le nombre de paliers possédés.
+    UpgradePurchased {
+        kind: crate::upgrades::UpgradeKind,
+        level: usize,
+    },
 }
 
 /// Raison d'un refus de commande.
@@ -137,6 +144,8 @@ pub enum CommandError {
     NothingThere,
     /// Bâtiment non supprimable (hub).
     NotRemovable,
+    /// Pas assez de formes en stock pour ce palier (ou palier maximal atteint).
+    CannotAfford,
 }
 
 /// Bâtiments du monde et leur occupation de la grille.

@@ -789,6 +789,10 @@ impl Factory {
                 let buffer = (since - duration).min(TICK);
                 let item = self.miners[id].mined.expect("ressource connue");
                 if self.try_miner_eject(id, item, ctx) {
+                    // Signal `itemProduced`.
+                    if let Item::Shape(shape) = item {
+                        ctx.hub.analytics.on_produced(shape);
+                    }
                     self.miners[id].last_mining_time = ctx.now - buffer;
                 }
             }
@@ -1148,6 +1152,15 @@ fn start_new_charge(p: &mut Processor, ejector_slots: usize, ctx: &mut TickConte
                 {
                     ctx.events.push(SimEvent::LevelCompleted(done));
                 }
+            }
+        }
+    }
+
+    // Signal `itemProduced` ; l'équilibreur passe `doNotTrack`.
+    if p.kind != P::Balancer {
+        for o in &out {
+            if let Item::Shape(shape) = o.item {
+                ctx.hub.analytics.on_produced(shape);
             }
         }
     }

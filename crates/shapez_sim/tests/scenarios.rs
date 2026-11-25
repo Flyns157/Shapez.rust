@@ -487,3 +487,51 @@ fn slot_filters_block_wrong_items() {
         vec![Item::Color(Color::Red)]
     );
 }
+
+#[test]
+fn statistics_count_mined_and_delivered_shapes() {
+    use shapez_sim::analytics::DataSource;
+    let (seed, x, y) = find_row_resource(4, is_full_circle);
+    let mut world = miner_line_to_hub(seed, x, y);
+    world.advance(60 * SECOND);
+    let circle = world
+        .registry
+        .find(&ShapeDef::from_short_key("CuCuCuCu").unwrap())
+        .unwrap();
+    // 0,4 forme/s : 4 formes par tranche de 10 s, extraites comme livrées.
+    let a = &world.hub.analytics;
+    assert_eq!(a.current_count(DataSource::Produced, circle), 4);
+    assert_eq!(a.current_count(DataSource::Delivered, circle), 4);
+}
+
+#[test]
+fn buying_a_miner_upgrade_speeds_up_extraction() {
+    use shapez_sim::upgrades::UpgradeKind;
+    let (seed, x, y) = find_row_resource(4, is_full_circle);
+    let mut world = miner_line_to_hub(seed, x, y);
+    assert_eq!(
+        world.apply(SimCommand::UnlockUpgrade(UpgradeKind::Miner)),
+        Err(shapez_sim::placement::CommandError::CannotAfford)
+    );
+    let rect = world
+        .registry
+        .intern(ShapeDef::from_short_key("RuRuRuRu").unwrap());
+    world.hub.add_stored(rect, 300);
+    world
+        .apply(SimCommand::UnlockUpgrade(UpgradeKind::Miner))
+        .unwrap();
+    assert_eq!(world.hub.stored(rect), 0);
+    assert!(world.drain_events().any(|e| matches!(
+        e,
+        SimEvent::UpgradePurchased {
+            kind: UpgradeKind::Miner,
+            level: 1
+        }
+    )));
+
+    world.advance(60 * SECOND);
+    let first = delivered(&world, "CuCuCuCu");
+    world.advance(100 * SECOND);
+    // ×1,5 : 0,6 forme/s.
+    assert_eq!(delivered(&world, "CuCuCuCu") - first, 60);
+}

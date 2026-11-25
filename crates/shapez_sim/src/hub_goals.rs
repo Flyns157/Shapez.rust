@@ -1,12 +1,17 @@
 //! Objectifs du hub : formes livrées, niveau courant et récompenses
 //! (port partiel de `src/js/game/hub_goals.js` et `modes/levels.js`).
 //!
-//! Le freeplay, les objectifs de débit (`throughputOnly`) et le shop d'améliorations
-//! arrivent en M5 ; ici on joue les niveaux de l'histoire jusqu'au 26.
+//! Les 26 niveaux de l'histoire sont suivis du mode libre (objectifs de débit tirés
+//! de la graine), et les formes stockées paient les paliers d'amélioration.
 
 use std::collections::HashMap;
 
 use shapez_core::{ShapeDef, ShapeId, ShapeRegistry};
+
+use crate::analytics::{Analytics, DataSource, SLICE_SECONDS};
+use crate::freeplay::{freeplay_required, freeplay_shape};
+use crate::units::Upgrades;
+use crate::upgrades::{TIER_COUNT, Tier, UpgradeKind, tiers, total_improvement};
 
 /// Récompense de fin de niveau (`enumHubGoalRewards`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -37,6 +42,8 @@ pub enum Reward {
     Blueprints,
     Freeplay,
     None,
+    /// Objectif du mode libre (`no_reward_freeplay`).
+    NoRewardFreeplay,
 }
 
 /// Un niveau de l'histoire.
@@ -113,31 +120,135 @@ pub struct LevelCompleted {
     pub reward: Reward,
 }
 
-/// État de progression (`HubGoals`).
+/// État de progression (`HubGoals`, avec `ProductionAnalytics`).
 #[derive(Debug, Clone)]
 pub struct HubGoals {
     /// Niveau courant, à partir de 1.
     pub level: u32,
+    /// Graine de la carte, pour les formes du mode libre.
+    seed: u32,
     stored: HashMap<ShapeId, u64>,
     gained: HashMap<Reward, u32>,
-    goal: Option<Goal>,
+    goal: Goal,
+    upgrade_levels: [usize; 4],
+    improvements: Upgrades,
+    /// Statistiques de production et de livraison.
+    pub analytics: Analytics,
 }
 
 impl HubGoals {
-    pub fn new(registry: &mut ShapeRegistry) -> Self {
+    pub fn new(seed: u32, registry: &mut ShapeRegistry) -> Self {
         let mut goals = Self {
             level: 1,
+            seed,
             stored: HashMap::new(),
             gained: HashMap::new(),
-            goal: None,
+            goal: Goal {
+                shape: registry.intern(ShapeDef::EMPTY),
+                required: 0,
+                reward: Reward::None,
+                throughput_only: false,
+            },
+            upgrade_levels: [0; 4],
+            improvements: Upgrades::default(),
+            analytics: Analytics::default(),
         };
         goals.compute_next_goal(registry);
         goals
     }
 
-    /// Objectif courant, `None` une fois l'histoire terminée (le freeplay arrive en M5).
-    pub fn goal(&self) -> Option<Goal> {
+    /// Objectif courant.
+    pub fn goal(&self) -> Goal {
         self.goal
+    }
+
+    /// `isFreePlay`.
+    pub fn is_free_play(&self) -> bool {
+        self.level as usize >= LEVELS.len()
+    }
+
+    /// `getCurrentGoalDelivered` : stock, ou formes livrées par seconde pour un objectif
+    /// de débit (sur la dernière tranche complète de statistiques).
+    pub fn goal_delivered(&self) -> u64 {
+        if self.goal.throughput_only {
+            self.analytics
+                .current_count(DataSource::Delivered, self.goal.shape)
+                / SLICE_SECONDS
+        } else {
+            self.stored(self.goal.shape)
+        }
+    }
+
+    /// Toutes les formes en stock.
+    pub fn stored_shapes(&self) -> &HashMap<ShapeId, u64> {
+        &self.stored
+    }
+
+    /// Fin de tick : `productionAnalytics.update`.
+    pub fn update_analytics(&mut self, now: u64) {
+        self.analytics.update(now, &self.stored);
+    }
+
+    /// Paliers achetés dans une famille.
+    pub fn upgrade_level(&self, kind: UpgradeKind) -> usize {
+        self.upgrade_levels[kind as usize]
+    }
+
+    /// Prochain palier à acheter, `None` au maximum.
+    pub fn next_tier(&self, kind: UpgradeKind) -> Option<&'static Tier> {
+        tiers(kind).get(self.upgrade_level(kind))
+    }
+
+    /// Multiplicateurs de vitesse (`upgradeImprovements`).
+    pub fn upgrades(&self) -> Upgrades {
+        self.improvements
+    }
+
+    /// Fixe les paliers achetés (chargement, bac à sable).
+    pub fn set_upgrade_level(&mut self, kind: UpgradeKind, level: usize) {
+        self.upgrade_levels[kind as usize] = level.min(TIER_COUNT);
+        let total = |kind| total_improvement(kind, self.upgrade_level(kind));
+        self.improvements = Upgrades {
+            belt: total(UpgradeKind::Belt),
+            miner: total(UpgradeKind::Miner),
+            processors: total(UpgradeKind::Processors),
+            painting: total(UpgradeKind::Painting),
+        };
+    }
+
+    fn stored_by_key(&self, key: &str, registry: &ShapeRegistry) -> u64 {
+        let def = ShapeDef::from_short_key(key).expect("forme d'amélioration valide");
+        registry.find(&def).map_or(0, |id| self.stored(id))
+    }
+
+    /// `canUnlockUpgrade`.
+    pub fn can_unlock_upgrade(&self, kind: UpgradeKind, registry: &ShapeRegistry) -> bool {
+        self.upgrade_level(kind) < TIER_COUNT
+            && self.next_tier(kind).is_some_and(|tier| {
+                tier.required
+                    .iter()
+                    .all(|&(key, amount)| self.stored_by_key(key, registry) >= amount)
+            })
+    }
+
+    /// `tryUnlockUpgrade` : paie le palier et l'applique.
+    pub fn try_unlock_upgrade(&mut self, kind: UpgradeKind, registry: &ShapeRegistry) -> bool {
+        if !self.can_unlock_upgrade(kind, registry) {
+            return false;
+        }
+        let tier = self.next_tier(kind).expect("palier vérifié");
+        for &(key, amount) in &tier.required {
+            let def = ShapeDef::from_short_key(key).expect("forme d'amélioration valide");
+            let id = registry.find(&def).expect("forme déjà livrée");
+            *self.stored.get_mut(&id).expect("forme en stock") -= amount;
+        }
+        self.set_upgrade_level(kind, self.upgrade_level(kind) + 1);
+        true
+    }
+
+    /// Donne directement des formes au hub (bac à sable, tests).
+    pub fn add_stored(&mut self, shape: ShapeId, amount: u64) {
+        *self.stored.entry(shape).or_insert(0) += amount;
     }
 
     pub fn stored(&self, shape: ShapeId) -> u64 {
@@ -148,15 +259,28 @@ impl HubGoals {
         self.gained.contains_key(&reward)
     }
 
+    /// Accorde une récompense sans finir de niveau (bac à sable, chargement).
+    pub fn grant_reward(&mut self, reward: Reward) {
+        *self.gained.entry(reward).or_insert(0) += 1;
+    }
+
     /// `computeNextGoal`.
     fn compute_next_goal(&mut self, registry: &mut ShapeRegistry) {
-        self.goal = LEVELS.get(self.level as usize - 1).map(|def| Goal {
-            shape: registry
-                .intern(ShapeDef::from_short_key(def.shape).expect("forme de niveau valide")),
-            required: def.required,
-            reward: def.reward,
-            throughput_only: def.throughput_only,
-        });
+        self.goal = match LEVELS.get(self.level as usize - 1) {
+            Some(def) => Goal {
+                shape: registry
+                    .intern(ShapeDef::from_short_key(def.shape).expect("forme de niveau valide")),
+                required: def.required,
+                reward: def.reward,
+                throughput_only: def.throughput_only,
+            },
+            None => Goal {
+                shape: registry.intern(freeplay_shape(self.seed, self.level)),
+                required: freeplay_required(self.level),
+                reward: Reward::NoRewardFreeplay,
+                throughput_only: true,
+            },
+        };
     }
 
     /// `handleDefinitionDelivered` : renvoie le niveau terminé, le cas échéant.
@@ -166,9 +290,9 @@ impl HubGoals {
         registry: &mut ShapeRegistry,
     ) -> Option<LevelCompleted> {
         *self.stored.entry(shape).or_insert(0) += 1;
-        let goal = self.goal?;
-        // Les objectifs de débit ont besoin des statistiques (M5).
-        if goal.throughput_only || self.stored(goal.shape) < goal.required {
+        self.analytics.on_delivered(shape);
+        let goal = self.goal;
+        if self.goal_delivered() < goal.required {
             return None;
         }
         *self.gained.entry(goal.reward).or_insert(0) += 1;
@@ -196,7 +320,7 @@ mod tests {
     #[test]
     fn delivering_the_goal_advances_the_level() {
         let mut reg = ShapeRegistry::new();
-        let mut goals = HubGoals::new(&mut reg);
+        let mut goals = HubGoals::new(0, &mut reg);
         let circle = reg.intern(ShapeDef::from_short_key("CuCuCuCu").unwrap());
         let other = reg.intern(ShapeDef::from_short_key("RuRuRuRu").unwrap());
         assert_eq!(goals.deliver(other, &mut reg), None);
@@ -213,6 +337,57 @@ mod tests {
         assert_eq!(goals.level, 2);
         assert!(goals.is_reward_unlocked(Reward::CutterAndTrash));
         assert_eq!(goals.stored(other), 1);
-        assert_eq!(reg.get(goals.goal().unwrap().shape).short_key(), "----CuCu");
+        assert_eq!(reg.get(goals.goal().shape).short_key(), "----CuCu");
+    }
+
+    #[test]
+    fn freeplay_follows_the_story() {
+        let mut reg = ShapeRegistry::new();
+        let mut goals = HubGoals::new(0, &mut reg);
+        goals.level = 27;
+        goals.compute_next_goal(&mut reg);
+        assert!(goals.is_free_play());
+        let goal = goals.goal();
+        assert_eq!(reg.get(goal.shape).short_key(), "SwRgSwRg:RwWyRwWy");
+        assert_eq!(goal.required, 4);
+        assert!(goal.throughput_only);
+    }
+
+    #[test]
+    fn throughput_goals_use_the_last_complete_slice() {
+        use crate::analytics::SLICE_DURATION;
+        let mut reg = ShapeRegistry::new();
+        let mut goals = HubGoals::new(0, &mut reg);
+        goals.level = 14;
+        goals.compute_next_goal(&mut reg);
+        let goal = goals.goal();
+        assert!(goal.throughput_only);
+        // 8 formes/s : 80 livraisons dans une tranche de 10 s.
+        for _ in 0..80 {
+            assert_eq!(goals.deliver(goal.shape, &mut reg), None);
+        }
+        goals.update_analytics(SLICE_DURATION + 1);
+        assert_eq!(goals.goal_delivered(), 8);
+        assert_eq!(
+            goals.deliver(goal.shape, &mut reg),
+            Some(LevelCompleted {
+                level: 14,
+                reward: Reward::BeltReader
+            })
+        );
+    }
+
+    #[test]
+    fn buying_an_upgrade_spends_shapes() {
+        let mut reg = ShapeRegistry::new();
+        let mut goals = HubGoals::new(0, &mut reg);
+        assert!(!goals.can_unlock_upgrade(UpgradeKind::Belt, &reg));
+        let circle = reg.intern(ShapeDef::from_short_key("CuCuCuCu").unwrap());
+        goals.add_stored(circle, 35);
+        assert!(goals.try_unlock_upgrade(UpgradeKind::Belt, &reg));
+        assert_eq!(goals.stored(circle), 5);
+        assert_eq!(goals.upgrade_level(UpgradeKind::Belt), 1);
+        assert_eq!(goals.upgrades().belt, 15_000);
+        assert!(!goals.try_unlock_upgrade(UpgradeKind::Belt, &reg));
     }
 }

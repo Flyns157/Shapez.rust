@@ -138,7 +138,7 @@ fn sync_buildings(
                     commands.entity(entity).despawn();
                 }
             }
-            SimEvent::LevelCompleted(_) => {}
+            SimEvent::LevelCompleted(_) | SimEvent::UpgradePurchased { .. } => {}
         }
     }
 }

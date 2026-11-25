@@ -3,20 +3,24 @@
 //! Le monde avance par ticks fixes ([`TICKS_PER_SECOND`] par seconde) et toute la
 //! logique travaille en entiers, pour rester déterministe (plan, §5.1 et §5.2).
 
+pub mod analytics;
 pub mod belt_path;
 pub mod building;
 pub mod factory;
+pub mod freeplay;
 pub mod hub_goals;
 pub mod map;
 pub mod placement;
 pub mod units;
+pub mod unlocks;
+pub mod upgrades;
 
 use building::{Building, BuildingKind};
 use factory::{Factory, TickContext};
 use hub_goals::HubGoals;
 use placement::{BuildingId, Buildings, CommandError, Placement, SimCommand, SimEvent};
 use shapez_core::{Rotation, ShapeRegistry, TilePos};
-use units::{TICK, Upgrades};
+use units::TICK;
 
 /// Fréquence fixe de la simulation.
 pub const TICKS_PER_SECOND: u32 = 60;
@@ -35,9 +39,8 @@ pub struct SimWorld {
     pub factory: Factory,
     /// Toutes les formes rencontrées, internées.
     pub registry: ShapeRegistry,
-    /// Progression (niveau, formes livrées).
+    /// Progression (niveau, formes livrées, améliorations, statistiques).
     pub hub: HubGoals,
-    pub upgrades: Upgrades,
     events: Vec<SimEvent>,
 }
 
@@ -51,7 +54,7 @@ impl SimWorld {
     /// Nouveau monde ; la graine est un entier comme `map.seed` dans le JS.
     pub fn new(seed: u32) -> Self {
         let mut registry = ShapeRegistry::new();
-        let hub = HubGoals::new(&mut registry);
+        let hub = HubGoals::new(seed, &mut registry);
         Self {
             tick: 0,
             time: 0,
@@ -60,7 +63,6 @@ impl SimWorld {
             factory: Factory::default(),
             registry,
             hub,
-            upgrades: Upgrades::default(),
             events: Vec::new(),
         }
     }
@@ -84,6 +86,17 @@ impl SimWorld {
                 .buildings
                 .remove_at(tile, &mut self.events)
                 .map(|_| None),
+            SimCommand::UnlockUpgrade(kind) => {
+                if self.hub.try_unlock_upgrade(kind, &self.registry) {
+                    self.events.push(SimEvent::UpgradePurchased {
+                        kind,
+                        level: self.hub.upgrade_level(kind),
+                    });
+                    Ok(None)
+                } else {
+                    Err(CommandError::CannotAfford)
+                }
+            }
         };
         // Signaux `entityAdded` / `entityDestroyed`, dans l'ordre.
         let mut i = start;
@@ -138,7 +151,7 @@ impl SimWorld {
     /// Dépose un item au début du chemin du convoyeur posé sur `tile`.
     pub fn inject_item(&mut self, tile: TilePos, item: shapez_core::Item) -> bool {
         match self.buildings.at(tile) {
-            Some(id) => self.factory.inject(id, item, &self.upgrades),
+            Some(id) => self.factory.inject(id, item, &self.hub.upgrades()),
             None => false,
         }
     }
@@ -160,18 +173,20 @@ impl SimWorld {
 
     /// Fait avancer le monde d'un tick.
     pub fn tick(&mut self) {
+        let upgrades = self.hub.upgrades();
         let mut ctx = TickContext {
             buildings: &self.buildings,
             map: &mut self.map,
             registry: &mut self.registry,
             hub: &mut self.hub,
-            upgrades: self.upgrades,
+            upgrades,
             now: self.time,
             events: &mut self.events,
         };
         self.factory.tick(&mut ctx);
         self.time += TICK;
         self.tick += 1;
+        self.hub.update_analytics(self.time);
     }
 
     /// Fait avancer le monde de `n` ticks (vitesse ×N).

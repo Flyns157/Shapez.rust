@@ -5,14 +5,16 @@
 use bevy::prelude::*;
 use shapez_core::{Direction, Rotation, TilePos};
 use shapez_sim::{
-    building::{Building, BuildingKind},
+    building::{Building, BuildingKind, Variant},
     placement::{Placement, SimCommand},
+    unlocks::{available_variants, is_unlocked},
 };
 
 use crate::{
     AppState,
     buildings_view::building_sprite,
     camera::{CameraSet, world_to_tile},
+    shop::OpenPanel,
     sim::Sim,
 };
 
@@ -43,10 +45,16 @@ pub struct PlacementState {
     drag_last: Option<TilePos>,
 }
 
+/// Variante sélectionnée parmi celles déverrouillées.
+fn current_variant(kind: BuildingKind, index: usize, sim: &Sim) -> Variant {
+    let variants = available_variants(kind, &sim.hub);
+    variants[index % variants.len()]
+}
+
 impl PlacementState {
     fn placement_at(&self, sim: &Sim, tile: TilePos) -> Option<Placement> {
         let kind = self.selected?;
-        let variant = kind.variants()[self.variant_index % kind.variants().len()];
+        let variant = current_variant(kind, self.variant_index, sim);
         let mut p = Placement::new(kind, tile, self.rotation).with_variant(variant);
         match kind {
             BuildingKind::Belt => {
@@ -118,7 +126,7 @@ fn selection_keys(
     mut state: ResMut<PlacementState>,
 ) {
     for (key, kind, _) in TOOLBAR {
-        if keys.just_pressed(key) {
+        if keys.just_pressed(key) && is_unlocked(kind, &sim.hub) {
             // Retaper la même touche désélectionne, comme dans le JS.
             if state.selected == Some(kind) {
                 state.selected = None;
@@ -139,7 +147,7 @@ fn selection_keys(
     if keys.just_pressed(KeyCode::KeyT)
         && let Some(kind) = state.selected
     {
-        state.variant_index = (state.variant_index + 1) % kind.variants().len();
+        state.variant_index = (state.variant_index + 1) % available_variants(kind, &sim.hub).len();
     }
     // Pipette : reprend le bâtiment sous le curseur.
     if keys.just_pressed(KeyCode::KeyQ) {
@@ -147,13 +155,11 @@ fn selection_keys(
             .cursor_tile
             .and_then(|t| sim.buildings.building_at(t))
             .map(|(_, b)| *b)
-            .filter(|b| b.kind.is_rotatable());
+            .filter(|b| b.kind.is_rotatable() && is_unlocked(b.kind, &sim.hub));
         match picked {
             Some(b) => {
                 state.selected = Some(b.kind);
-                state.variant_index = b
-                    .kind
-                    .variants()
+                state.variant_index = available_variants(b.kind, &sim.hub)
                     .iter()
                     .position(|v| *v == b.variant)
                     .unwrap_or(0);
@@ -170,9 +176,15 @@ fn selection_keys(
 fn place_and_remove(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
+    panel: Res<OpenPanel>,
     mut sim: ResMut<Sim>,
     mut state: ResMut<PlacementState>,
 ) {
+    // Les clics vont au panneau ouvert, pas à la carte.
+    if panel.is_open() {
+        state.drag_last = None;
+        return;
+    }
     let Some(tile) = state.cursor_tile else {
         return;
     };
@@ -300,9 +312,17 @@ fn spawn_toolbar(mut commands: Commands) {
     ));
 }
 
-fn update_toolbar(state: Res<PlacementState>, mut text: Single<&mut Text, With<ToolbarText>>) {
+fn update_toolbar(
+    state: Res<PlacementState>,
+    sim: Res<Sim>,
+    mut text: Single<&mut Text, With<ToolbarText>>,
+) {
     let mut s = String::new();
     for (i, (_, kind, name)) in TOOLBAR.iter().enumerate() {
+        // Comme dans le JS, les bâtiments verrouillés n'apparaissent pas.
+        if !is_unlocked(*kind, &sim.hub) {
+            continue;
+        }
         let key = (i + 1) % 10;
         if state.selected == Some(*kind) {
             s.push_str(&format!("[{key} {name}]  "));
@@ -311,14 +331,14 @@ fn update_toolbar(state: Res<PlacementState>, mut text: Single<&mut Text, With<T
         }
     }
     if let Some(kind) = state.selected {
-        let variant = kind.variants()[state.variant_index % kind.variants().len()];
+        let variant = current_variant(kind, state.variant_index, &sim);
         s.push_str(&format!(
             "\n{variant:?} - rotation {} (R, T = variante, Q = pipette, X/clic droit = supprimer)",
             state.rotation.degrees()
         ));
     } else {
         s.push_str(
-            "\nClic gauche + glisser : deplacer la carte. Q = pipette, X/clic droit = supprimer",
+            "\nClic gauche + glisser : deplacer la carte. Q = pipette, X/clic droit = supprimer, F = ameliorations, G = statistiques",
         );
     }
     if text.0 != s {

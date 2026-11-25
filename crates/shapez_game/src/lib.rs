@@ -11,6 +11,7 @@ pub mod map_render;
 pub mod menu;
 pub mod placement_ui;
 pub mod shape_textures;
+pub mod shop;
 pub mod sim;
 pub mod state;
 
@@ -31,6 +32,7 @@ impl Plugin for GamePlugin {
                 buildings_view::BuildingsViewPlugin,
                 items_view::ItemsViewPlugin,
                 placement_ui::PlacementUiPlugin,
+                shop::PanelsPlugin,
             ))
             .add_systems(Startup, spawn_camera);
     }

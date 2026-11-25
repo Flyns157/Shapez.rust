@@ -18,9 +18,19 @@ export const JS_ROOT = path.resolve(process.env.SHAPEZ_JS_ROOT || path.resolve(h
  * @param {string} relPath chemin relatif à src/js, par exemple "game/colors.js"
  * @param {Record<string, unknown>} scope noms disponibles pour le module (imports remplacés)
  */
-export function loadModule(relPath, scope = {}) {
+export function loadModule(relPath, scope = {}, { extraExports = [], stubImports = false } = {}) {
     let src = fs.readFileSync(path.join(JS_ROOT, relPath), "utf8");
-    const exported = [];
+    const exported = [...extraExports];
+    if (stubImports) {
+        // Les imports non fournis deviennent des classes vides : utile pour les
+        // modules qui importent l'interface sans s'en servir dans le code testé.
+        scope = { ...scope };
+        for (const m of src.matchAll(/^import\s*\{([^}]*)\}\s*from/gm)) {
+            for (const name of m[1].split(",").map(n => n.trim()).filter(Boolean)) {
+                if (!(name in scope)) scope[name] = class {};
+            }
+        }
+    }
     src = src.replace(/^import[\s\S]*?from\s+["'][^"']+["'];?\s*$/gm, "");
     src = src.replace(/^export\s+(const|let|function|class)\s+([A-Za-z0-9_$]+)/gm, (_, kind, name) => {
         exported.push(name);
