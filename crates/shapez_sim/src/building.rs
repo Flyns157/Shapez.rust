@@ -8,7 +8,9 @@
 use shapez_core::{Direction, Rotation, TilePos};
 
 /// Type de bâtiment (`MetaBuilding`), limité au périmètre jouable du MVP (M4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum BuildingKind {
     Belt,
     Balancer,
@@ -26,7 +28,19 @@ pub enum BuildingKind {
 
 /// Variante d'un bâtiment (`enum*Variants` du JS). Chaque type n'accepte que les
 /// siennes, voir [`BuildingKind::variants`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Variant {
     #[default]
     Default,
@@ -118,7 +132,7 @@ impl BuildingKind {
 }
 
 /// Filtre d'un slot d'entrée.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SlotFilter {
     Any,
     Shape,
@@ -321,7 +335,7 @@ pub fn slots(kind: BuildingKind, variant: Variant, rotation_variant: u8) -> Slot
 }
 
 /// Bâtiment posé sur la carte (`StaticMapEntityComponent` + type).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Building {
     pub kind: BuildingKind,
     pub variant: Variant,

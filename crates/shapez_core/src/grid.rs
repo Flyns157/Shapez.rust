@@ -7,7 +7,19 @@
 use std::ops::{Add, Sub};
 
 /// Position entière d'une tuile sur la carte.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub struct TilePos {
     pub x: i32,
     pub y: i32,
@@ -52,7 +64,9 @@ impl Sub for TilePos {
 }
 
 /// Une des quatre directions cardinales (`enumDirection` du JS).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum Direction {
     Top,
     Right,
@@ -96,7 +110,19 @@ impl Direction {
 }
 
 /// Rotation par quart de tour, dans le sens horaire.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Rotation {
     #[default]
     R0,

@@ -6,7 +6,9 @@ use std::fmt;
 ///
 /// La valeur discriminante est le champ de bits rouge/vert/bleu du JS
 /// (`bitfieldToColor`) : le mélange de deux couleurs est un simple `OU`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 #[repr(u8)]
 pub enum Color {
     Uncolored = 0b000,

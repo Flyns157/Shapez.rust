@@ -30,7 +30,7 @@ pub const IMPROVEMENT_ONE: u64 = 10_000;
 const BELT_ITEMS_PER_SECOND: u64 = 2;
 
 /// Type de traitement (`enumItemProcessorTypes`), pour les durées.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ProcessorKind {
     Balancer,
     Cutter,
@@ -49,7 +49,7 @@ pub enum ProcessorKind {
 
 /// Multiplicateurs des quatre familles d'améliorations (`upgradeImprovements`),
 /// en dix-millièmes (voir [`crate::upgrades`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Upgrades {
     pub belt: u64,
     pub miner: u64,

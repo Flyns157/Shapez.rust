@@ -293,9 +293,11 @@ fn random_sub_shape(rng: &mut Alea, weights: &[(SubShape, f64); 4]) -> SubShape 
 /// Carte complète : chunks générés à la demande, mis en cache.
 ///
 /// Le `HashMap` ne sert qu'aux recherches ; la logique n'itère jamais dessus.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Map {
     seed: u32,
+    /// Cache, régénéré depuis la graine après un chargement.
+    #[serde(skip)]
     chunks: HashMap<ChunkPos, ChunkResources>,
 }
 

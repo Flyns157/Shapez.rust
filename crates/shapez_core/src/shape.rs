@@ -423,3 +423,21 @@ mod tests {
         assert_eq!(painted.short_key(), "CrCuCbCu");
     }
 }
+
+/// En sauvegarde, une forme s'écrit sous son code court.
+impl serde::Serialize for ShapeDef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.short_key())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for ShapeDef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let key = <std::borrow::Cow<'de, str>>::deserialize(deserializer)?;
+        // La forme vide s'écrit comme une chaîne vide, que `from_short_key` refuse.
+        if key.is_empty() {
+            return Ok(Self::EMPTY);
+        }
+        Self::from_short_key(&key).map_err(serde::de::Error::custom)
+    }
+}

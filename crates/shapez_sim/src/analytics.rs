@@ -16,7 +16,7 @@ pub const SLICE_SECONDS: u64 = 10;
 pub const SLICE_DURATION: u64 = SLICE_SECONDS * SECOND;
 
 /// `enumAnalyticsDataSource`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DataSource {
     /// Formes extraites ou fabriquées.
     Produced,
@@ -36,7 +36,7 @@ impl DataSource {
 
 type Slice = HashMap<ShapeId, u64>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Analytics {
     history: [VecDeque<Slice>; 3],
     last_slice: u64,

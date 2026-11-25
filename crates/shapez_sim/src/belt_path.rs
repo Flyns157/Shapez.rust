@@ -19,14 +19,14 @@ slotmap::new_key_type! {
 }
 
 /// Un convoyeur du chemin et sa longueur effective (`getEffectiveLengthTiles`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BeltEntry {
     pub id: BuildingId,
     pub length: u32,
 }
 
 /// Où le chemin livre ses items (`computeAcceptingEntityAndSlot`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum PathTarget {
     /// Rien ne prend les items : ils s'accumulent au bout.
     #[default]
@@ -60,7 +60,7 @@ impl std::fmt::Debug for Acceptor<'_> {
 }
 
 /// Chemin de convoyeurs et ses items.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BeltPath {
     belts: Vec<BeltEntry>,
     /// `(distance au suivant, item)`, du début vers la fin.

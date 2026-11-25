@@ -3,7 +3,7 @@
 use crate::{Color, ShapeId};
 
 /// Un item : valeur `Copy` de 8 octets, rangée telle quelle dans les convoyeurs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Item {
     Shape(ShapeId),
     Color(Color),
