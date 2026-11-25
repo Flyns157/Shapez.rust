@@ -44,7 +44,7 @@ sélection, Ctrl+C/X/V copie, coupe et colle un plan (débloqué au niveau 12, p
 de plan), R tourne le plan, Ctrl+Z/Y annule et rétablit, M pose un repère, et un clic sur
 une forme du shop l'épingle.
 
-Couche câbles (débloquée au niveau 20) : E bascule entre la couche normale et la couche
+Couche câbles (débloquée en terminant le niveau 20) : E bascule entre la couche normale et la couche
 câbles. Un clic sur un levier le bascule ; sur la couche câbles, un clic sur un émetteur
 constant fait défiler son signal (Maj : en arrière).
 
