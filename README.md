@@ -13,6 +13,7 @@ complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
   - [3. Récupérer le code](#3-récupérer-le-code)
   - [4. Importer les assets du jeu d'origine](#4-importer-les-assets-du-jeu-dorigine)
   - [5. Lancer le jeu](#5-lancer-le-jeu)
+    - [Raccourcis de construction](#raccourcis-de-construction)
   - [6. Lancer les tests](#6-lancer-les-tests)
 - [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
 - [Variables d'environnement](#variables-denvironnement)
@@ -213,6 +214,18 @@ cargo run --release
 
 Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Windows).
 
+#### Raccourcis de construction
+
+| Action | Raccourci |
+|---|---|
+| Sélectionner une zone | Ctrl + glisser (ajouter Maj pour étendre la sélection) |
+| Supprimer la sélection | Suppr ou X |
+| Copier, couper, coller un plan | Ctrl+C, Ctrl+X, Ctrl+V (débloqué au niveau 12, payé en formes de plan) |
+| Tourner le plan | R |
+| Annuler, rétablir | Ctrl+Z, Ctrl+Y |
+| Poser un repère | M |
+| Épingler une forme du shop | clic sur la forme |
+
 ### 6. Lancer les tests
 
 ```sh
@@ -261,6 +274,7 @@ Toutes sont facultatives.
 | `SHAPEZ_JS_ROOT` | `cargo xtask import-assets`, oracle JS | Chemin du clone du code source de shapez.io | `../shapez.io` |
 | `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
+| `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
 

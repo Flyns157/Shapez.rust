@@ -55,6 +55,10 @@ struct BuyButton(UpgradeKind);
 #[derive(Component, Debug, Clone, Copy)]
 struct SourceButton(DataSource);
 
+/// Icône d'une forme requise : un clic l'épingle ou la désépingle.
+#[derive(Component, Debug, Clone)]
+struct PinButton(&'static str);
+
 /// Modèle affiché, pour ne reconstruire qu'en cas de changement.
 #[derive(Component, Debug, Default, PartialEq)]
 struct Shown(Vec<String>);
@@ -204,18 +208,26 @@ fn on_activate(
     activate: On<Activate>,
     buy: Query<&BuyButton>,
     source_buttons: Query<&SourceButton>,
+    pins: Query<&PinButton>,
     // Absent hors partie (boutons du menu principal).
     sim: Option<ResMut<Sim>>,
     mut source: ResMut<StatsSource>,
 ) {
     let target = activate.event_target();
+    let mut sim = sim;
     if let Ok(&BuyButton(kind)) = buy.get(target)
-        && let Some(mut sim) = sim
+        && let Some(sim) = sim.as_deref_mut()
     {
         // Refus silencieux si les formes manquent : le bouton est alors grisé.
         let _ = sim.apply(SimCommand::UnlockUpgrade(kind));
     } else if let Ok(&SourceButton(s)) = source_buttons.get(target) {
         source.0 = s;
+    } else if let Ok(PinButton(key)) = pins.get(target)
+        && let Some(sim) = sim.as_deref_mut()
+    {
+        let def = shapez_core::ShapeDef::from_short_key(key).expect("forme valide");
+        let id = sim.registry.intern(def);
+        sim.marks.toggle_pin(id);
     }
 }
 
@@ -284,8 +296,10 @@ fn update_shop(
         if let Some(tier) = hub.next_tier(kind) {
             for &(key, _) in &tier.required {
                 let def = shapez_core::ShapeDef::from_short_key(key).expect("forme valide");
-                let have = sim.registry.find(&def).map_or(0, |id| hub.stored(id));
-                line.push_str(&format!(":{have}"));
+                let id = sim.registry.find(&def);
+                let have = id.map_or(0, |id| hub.stored(id));
+                let pinned = id.is_some_and(|id| sim.marks.is_pinned(id));
+                line.push_str(&format!(":{have}:{pinned}"));
             }
         }
         model.push(line);
@@ -321,16 +335,24 @@ fn update_shop(
                 multiplier(current(kind))
             ),
         };
-        let requirements: Vec<(Handle<Image>, String, bool)> = tier
+        let requirements: Vec<(&'static str, Handle<Image>, String, bool)> = tier
             .map(|t| {
                 t.required
                     .iter()
                     .map(|&(key, amount)| {
                         let def = shapez_core::ShapeDef::from_short_key(key).expect("forme valide");
                         let have = sim.registry.find(&def).map_or(0, |id| hub.stored(id));
+                        let pinned = sim
+                            .registry
+                            .find(&def)
+                            .is_some_and(|id| sim.marks.is_pinned(id));
                         (
+                            key,
                             textures.get_or_render(def, &mut images),
-                            format!("{have} / {amount}"),
+                            format!(
+                                "{have} / {amount}{}",
+                                if pinned { " (epinglee)" } else { "" }
+                            ),
                             have >= amount,
                         )
                     })
@@ -350,7 +372,7 @@ fn update_shop(
         .despawn_children()
         .with_children(|p| {
             p.spawn(label(
-                "Ameliorations (F ou Echap pour fermer)",
+                "Ameliorations (F ou Echap pour fermer ; clic sur une forme pour l'epingler)",
                 22.0,
                 Color::WHITE,
             ));
@@ -368,8 +390,13 @@ fn update_shop(
                         ..default()
                     })
                     .with_children(|line| {
-                        for (handle, text, enough) in requirements {
-                            line.spawn(icon(handle, 32.0));
+                        for (key, handle, text, enough) in requirements {
+                            line.spawn((
+                                PinButton(key),
+                                Button,
+                                ActivateOnPress,
+                                icon(handle, 32.0),
+                            ));
                             line.spawn(label(text, 16.0, if enough { ENOUGH } else { MISSING }));
                         }
                         line.spawn(button(BuyButton(kind), "Acheter", affordable));

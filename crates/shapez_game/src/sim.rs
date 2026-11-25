@@ -80,12 +80,31 @@ impl Plugin for SimPlugin {
 
 fn start_world(mut commands: Commands, mut next: ResMut<NextGame>) {
     match std::mem::take(&mut *next) {
-        NextGame::New => commands.insert_resource(Sim(SimWorld::new_game(new_game_seed()))),
+        NextGame::New => {
+            let mut world = SimWorld::new_game(new_game_seed());
+            if std::env::var_os("SHAPEZ_SANDBOX").is_some() {
+                sandbox(&mut world);
+            }
+            commands.insert_resource(Sim(world));
+        }
         NextGame::Load { name, world } => {
             commands.insert_resource(Sim(*world));
             commands.insert_resource(CurrentSave(name));
         }
     }
+}
+
+/// Bac à sable de développement (`SHAPEZ_SANDBOX=1`) : toutes les récompenses de
+/// l'histoire et de quoi payer les plans, pour essayer chaque outil sans jouer.
+fn sandbox(world: &mut SimWorld) {
+    for def in shapez_sim::hub_goals::LEVELS {
+        world.hub.grant_reward(def.reward);
+    }
+    let shape = world.registry.intern(
+        shapez_core::ShapeDef::from_short_key(shapez_sim::editing::BLUEPRINT_SHAPE)
+            .expect("forme de plan valide"),
+    );
+    world.hub.add_stored(shape, 1_000_000);
 }
 
 /// Graine d'une nouvelle partie, entre 0 et 100 000 comme `randomInt(0, 100000)` du JS.

@@ -78,6 +78,10 @@ fn keyboard_pan(
     zoom: Res<Zoom>,
     mut camera: Single<&mut Transform, With<Camera2d>>,
 ) {
+    // Ctrl+lettre est un raccourci (annuler, copier…), pas un déplacement.
+    if keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+        return;
+    }
     let mut dir = Vec2::ZERO;
     if keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) {
         dir.y += 1.0;
