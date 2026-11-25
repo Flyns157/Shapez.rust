@@ -200,6 +200,13 @@ impl SimWorld {
         }
     }
 
+    /// Vide les items de ces bâtiments (`HUDMassSelector.clearBelts`).
+    pub fn clear_items(&mut self, ids: &[BuildingId]) {
+        for &id in ids {
+            self.factory.clear_items(id);
+        }
+    }
+
     /// Dépose un item au début du chemin du convoyeur posé sur `tile`.
     pub fn inject_item(&mut self, tile: TilePos, item: shapez_core::Item) -> bool {
         match self.buildings.at(tile) {

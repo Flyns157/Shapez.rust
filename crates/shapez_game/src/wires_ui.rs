@@ -1,12 +1,13 @@
 //! Couche wires côté jeu : bascule de couche (E), voile sombre, état des câbles,
-//! valeurs des pins, levier (clic) et émetteur constant (clic pour changer le signal).
+//! valeurs des pins, levier (clic) et émetteur constant (clic pour ouvrir sa boîte de
+//! dialogue, voir [`crate::signal_edit`]).
 //! Port de `hud/parts/layer_preview.js`, `lever_toggle.js`, `constant_signal_edit.js`
 //! et du rendu de `systems/wire.js` et `systems/wired_pins.js`.
 
 use std::collections::HashMap;
 
 use bevy::prelude::*;
-use shapez_core::{Color as ShapeColor, Item};
+use shapez_core::Item;
 use shapez_sim::{
     building::{BuildingKind, Layer},
     hub_goals::Reward,
@@ -22,6 +23,7 @@ use crate::{
     placement_ui::PlacementState,
     shape_textures::ShapeTextures,
     shop::OpenPanel,
+    signal_edit::SignalEdit,
     sim::Sim,
 };
 
@@ -130,17 +132,9 @@ fn switch_layer(
     placement.selected = None;
 }
 
-/// Signaux proposés par un clic sur un émetteur constant, dans l'ordre.
-fn signal_cycle(sim: &Sim) -> Vec<Option<Item>> {
-    let mut out = vec![Some(Item::Bool(true)), Some(Item::Bool(false))];
-    out.extend(ShapeColor::ALL.map(|c| Some(Item::Color(c))));
-    out.push(Some(Item::Shape(sim.hub.goal().shape)));
-    out.push(None);
-    out
-}
-
 /// Clic sur un levier (`HUDLeverToggle`) ou, sur la couche wires, sur un émetteur
 /// constant (`HUDConstantSignalEdit`) : ils passent avant la pose de bâtiments.
+#[allow(clippy::too_many_arguments)]
 fn click_interactions(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -148,6 +142,7 @@ fn click_interactions(
     layer: Res<ActiveLayer>,
     placement: Res<PlacementState>,
     mut editor: ResMut<Editor>,
+    mut signal_edit: ResMut<SignalEdit>,
     mut sim: ResMut<Sim>,
 ) {
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
@@ -175,19 +170,7 @@ fn click_interactions(
     if let Some((_, signal)) = sim.buildings.building_at_layer(tile, Layer::Wires)
         && signal.kind == BuildingKind::ConstantSignal
     {
-        let cycle = signal_cycle(&sim);
-        let n = cycle.len();
-        let back = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-        let next = match cycle.iter().position(|v| *v == signal.config) {
-            Some(i) if back => cycle[(i + n - 1) % n],
-            Some(i) => cycle[(i + 1) % n],
-            None => cycle[0],
-        };
-        let _ = sim.apply(SimCommand::Configure {
-            tile,
-            layer: Layer::Wires,
-            config: next,
-        });
+        signal_edit.open(&sim, tile, false);
         editor.swallow = true;
     }
 }

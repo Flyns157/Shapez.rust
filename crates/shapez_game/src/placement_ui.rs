@@ -4,7 +4,7 @@
 //! Port simplifié de `hud/parts/building_placer.js` et `building_placer_logic.js`.
 
 use bevy::prelude::*;
-use shapez_core::{Direction, Item, Rotation, TilePos};
+use shapez_core::{Direction, Rotation, TilePos};
 use shapez_sim::{
     building::{BuildingKind, Layer, Variant},
     placement::{Placement, SimCommand},
@@ -140,9 +140,6 @@ impl PlacementState {
             BuildingKind::Wire => {
                 (p.rotation, p.rotation_variant) = sim.buildings.optimal_wire(tile, variant);
             }
-            // Le JS ouvre une boîte de dialogue ; ici l'émetteur part sur « vrai » et un
-            // clic dessus fait défiler les signaux.
-            BuildingKind::ConstantSignal => p.config = Some(Item::Bool(true)),
             _ => {}
         }
         Some(p)
@@ -437,7 +434,7 @@ fn update_toolbar(
         ));
     } else if !editor.selection.is_empty() {
         s.push_str(&format!(
-            "\nSelection : {} batiments - Suppr/X = supprimer, Ctrl+C = copier, Ctrl+X = couper, Echap = annuler",
+            "\nSelection : {} batiments - Suppr/X = supprimer, B = vider, Ctrl+C = copier, Ctrl+X = couper, Echap = annuler",
             editor.selection.len()
         ));
     } else if let Some(kind) = state.selected {
@@ -448,7 +445,7 @@ fn update_toolbar(
         ));
     } else if layer.0 == Layer::Wires {
         s.push_str(
-            "\nE = couche normale, clic sur un signal constant = changer sa valeur (Maj = en arriere), clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer",
+            "\nE = couche normale, clic sur un signal constant = changer sa valeur, clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer",
         );
     } else {
         s.push_str(

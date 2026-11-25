@@ -550,6 +550,42 @@ impl Factory {
         self.ejectors_dirty = true;
     }
 
+    /// Vide les items d'un bâtiment (`Component.clear` de chaque composant, touche B) :
+    /// chemin du convoyeur, slots de sortie, entrées et charges d'un processeur, tampons
+    /// d'extracteur, de tunnel, de filtre et de lecteur. Comme dans le JS, le stockage
+    /// garde son contenu.
+    pub fn clear_items(&mut self, id: BuildingId) {
+        if let Some(&p) = self.belt_path.get(id) {
+            self.paths[p].clear_items();
+        }
+        if let Some(ejector) = self.ejectors.get_mut(id) {
+            for slot in &mut ejector.slots {
+                slot.item = None;
+                slot.progress = 0;
+            }
+        }
+        if let Some(p) = self.receivers.processors.get_mut(id) {
+            p.inputs.iter_mut().for_each(|i| *i = None);
+            p.input_count = 0;
+            p.charges.clear();
+            p.bonus_time = 0;
+            p.queued.clear();
+            p.next_output_slot = 0;
+        }
+        if let Some(m) = self.miners.get_mut(id) {
+            m.chain_buffer.clear();
+        }
+        if let Some(t) = self.receivers.tunnels.get_mut(id) {
+            t.pending.clear();
+        }
+        if let Some(f) = self.receivers.filters.get_mut(id) {
+            f.lists = Default::default();
+        }
+        if let Some(r) = self.readers.get_mut(id) {
+            *r = Reader::default();
+        }
+    }
+
     /// Le voisinage de ces convoyeurs a changé (`onSurroundingsChanged`).
     pub fn notify_paths_of(&mut self, belts: &[BuildingId], buildings: &Buildings) {
         let mut seen = Vec::new();
