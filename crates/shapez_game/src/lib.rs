@@ -18,6 +18,7 @@ pub mod shape_textures;
 pub mod shop;
 pub mod sim;
 pub mod state;
+pub mod wires_ui;
 
 pub use state::AppState;
 
@@ -45,6 +46,7 @@ impl Plugin for GamePlugin {
             saves::SavesPlugin,
             editing_ui::EditingUiPlugin,
             marks_ui::MarksUiPlugin,
+            wires_ui::WiresUiPlugin,
         ))
         .add_systems(Startup, spawn_camera);
     }

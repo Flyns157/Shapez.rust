@@ -3,7 +3,7 @@
 use shapez_core::{Rotation, ShapeDef, TilePos};
 use shapez_sim::{
     SimWorld,
-    building::{BuildingKind, Variant},
+    building::{BuildingKind, Layer, Variant},
     editing::{BLUEPRINT_SHAPE, Blueprint, History, blueprint_cost},
     placement::{CommandError, Placement, SimCommand},
 };
@@ -68,7 +68,8 @@ fn mass_delete_and_undo() {
     world.apply_all([placement(BuildingKind::Cutter, 6, 7, Rotation::R0)]);
     let before = layout(&world);
     // Le rectangle touche aussi le hub, qui n'est jamais sélectionné.
-    let selection = world.buildings_in_rect(TilePos::new(10, 8), TilePos::new(-1, 5));
+    let selection =
+        world.buildings_in_rect(TilePos::new(10, 8), TilePos::new(-1, 5), Layer::Regular);
     assert_eq!(selection.len(), 6);
     let tx = world.remove_all(&selection);
     assert_eq!(tx.removed.len(), 6);
@@ -83,9 +84,9 @@ fn blueprint_cost_follows_the_js_formula() {
     let mut world = SimWorld::new_game(1);
     let mut history = History::default();
     line(&mut world, &mut history);
-    let one = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(5, 5));
+    let one = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(5, 5), Layer::Regular);
     assert_eq!(Blueprint::from_buildings(&world, &one).unwrap().cost(), 4);
-    let five = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(9, 5));
+    let five = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(9, 5), Layer::Regular);
     assert_eq!(Blueprint::from_buildings(&world, &five).unwrap().cost(), 20);
     // Valeurs du JS (`findNiceIntegerValue(4 * Math.pow(n, 1.1))`).
     for (n, cost) in [
@@ -107,7 +108,7 @@ fn paste_a_rotated_blueprint() {
     let mut world = SimWorld::new_game(1);
     let mut history = History::default();
     line(&mut world, &mut history);
-    let ids = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(9, 5));
+    let ids = world.buildings_in_rect(TilePos::new(5, 5), TilePos::new(9, 5), Layer::Regular);
     let mut blueprint = Blueprint::from_buildings(&world, &ids).unwrap();
     // Ancrage au centre moyen : (7, 5), donc des origines de -2 à 2.
     let origins: Vec<i32> = blueprint
@@ -139,7 +140,8 @@ fn paste_a_rotated_blueprint() {
     // Recoller au même endroit : tout est bloqué par des convoyeurs remplaçables,
     // donc tout se repose ; un bâtiment non remplaçable, lui, bloque.
     world.apply_all([placement(BuildingKind::Trash, 30, 30, Rotation::R0)]);
-    let single = world.buildings_in_rect(TilePos::new(30, 30), TilePos::new(30, 30));
+    let single =
+        world.buildings_in_rect(TilePos::new(30, 30), TilePos::new(30, 30), Layer::Regular);
     let trash = Blueprint::from_buildings(&world, &single).unwrap();
     assert!(!trash.can_place_any(&world, TilePos::new(30, 30)));
     assert!(matches!(

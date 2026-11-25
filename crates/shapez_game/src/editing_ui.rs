@@ -170,6 +170,7 @@ fn mass_select(
     panel: Res<OpenPanel>,
     placement: Res<PlacementState>,
     sim: Res<Sim>,
+    layer: Res<crate::wires_ui::ActiveLayer>,
     mut editor: ResMut<Editor>,
 ) {
     let Some(tile) = placement.cursor_tile else {
@@ -193,7 +194,7 @@ fn mass_select(
     }
     // Relâché : la sélection remplace l'ancienne, ou s'y ajoute avec Maj.
     editor.select_start = None;
-    let found = sim.buildings_in_rect(start, tile);
+    let found = sim.buildings_in_rect(start, tile, layer.0);
     if !shift(&keys) {
         editor.selection.clear();
     }
@@ -419,14 +420,7 @@ fn draw_blueprint(
     };
     let affordable = bp.can_afford(&sim);
     for p in bp.placements_at(tile) {
-        let building = shapez_sim::building::Building {
-            kind: p.kind,
-            variant: p.variant,
-            rotation_variant: p.rotation_variant,
-            origin: p.origin,
-            rotation: p.rotation,
-            original_rotation: p.original_rotation,
-        };
+        let building = p.building();
         let (mut sprite, transform) = building_sprite(&building, &assets, SELECTION_Z + 1.0);
         sprite.color = if affordable && sim.buildings.can_place(&p).is_ok() {
             Color::WHITE.with_alpha(0.7)

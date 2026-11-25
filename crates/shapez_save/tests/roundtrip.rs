@@ -58,6 +58,7 @@ fn busy_world() -> SimWorld {
     world
         .apply(SimCommand::Remove {
             tile: TilePos::new(cx + 2, y),
+            layer: shapez_sim::building::Layer::Regular,
         })
         .unwrap();
     world.advance(SECOND);

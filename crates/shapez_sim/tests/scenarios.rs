@@ -277,6 +277,7 @@ fn removing_a_belt_splits_the_path_and_drops_its_items() {
     world
         .apply(SimCommand::Remove {
             tile: TilePos::new(2, y),
+            layer: shapez_sim::building::Layer::Regular,
         })
         .unwrap();
     world.advance(120 * SECOND);
@@ -284,6 +285,7 @@ fn removing_a_belt_splits_the_path_and_drops_its_items() {
     world
         .apply(SimCommand::Remove {
             tile: TilePos::new(x - 3, y),
+            layer: shapez_sim::building::Layer::Regular,
         })
         .unwrap();
     assert_eq!(world.factory.paths().count(), 2);

@@ -1,13 +1,33 @@
-//! Définitions des bâtiments du MVP : variantes, dimensions et slots d'entrée/sortie
-//! (port des `MetaBuilding` de `src/js/game/buildings/`).
+//! Définitions des bâtiments : variantes, couche, dimensions, slots d'entrée/sortie et
+//! pins de la couche wires (port des `MetaBuilding` de `src/js/game/buildings/`).
 //!
 //! Les positions et directions sont **locales** (bâtiment non tourné, orienté vers le
 //! haut). Comme dans le JS, un slot d'acceptation indique le côté *d'où vient* l'item,
 //! et un slot d'éjection le côté *vers lequel* il part.
 
-use shapez_core::{Direction, Rotation, TilePos};
+use shapez_core::{Direction, Item, Rotation, TilePos};
 
-/// Type de bâtiment (`MetaBuilding`), limité au périmètre jouable du MVP (M4).
+/// Couche d'un bâtiment (`getLayer`) : chacune a sa propre grille d'occupation.
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+)]
+pub enum Layer {
+    #[default]
+    Regular,
+    Wires,
+}
+
+/// Type de bâtiment (`MetaBuilding`).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
@@ -24,6 +44,17 @@ pub enum BuildingKind {
     Trash,
     Storage,
     Hub,
+    /// Câble (couche wires).
+    Wire,
+    /// Croisement de câbles.
+    WireTunnel,
+    /// Émetteur de signal constant.
+    ConstantSignal,
+    /// Levier (couche normale, pin vers la couche wires).
+    Lever,
+    /// Portes ET (variante par défaut), OU, NON et XOR.
+    LogicGate,
+    Transistor,
 }
 
 /// Variante d'un bâtiment (`enum*Variants` du JS). Chaque type n'accepte que les
@@ -61,10 +92,15 @@ pub enum Variant {
     Double,
     /// Extracteur chaînable.
     Chainable,
+    /// Câble de la seconde couleur (`enumWireVariant.second`).
+    Second,
+    Or,
+    Not,
+    Xor,
 }
 
 impl BuildingKind {
-    pub const ALL: [Self; 12] = [
+    pub const ALL: [Self; 18] = [
         Self::Belt,
         Self::Balancer,
         Self::UndergroundBelt,
@@ -77,6 +113,12 @@ impl BuildingKind {
         Self::Trash,
         Self::Storage,
         Self::Hub,
+        Self::Wire,
+        Self::WireTunnel,
+        Self::ConstantSignal,
+        Self::Lever,
+        Self::LogicGate,
+        Self::Transistor,
     ];
 
     /// Identifiant du JS (`MetaBuilding.getId()`), utile pour les sauvegardes.
@@ -94,6 +136,12 @@ impl BuildingKind {
             Self::Trash => "trash",
             Self::Storage => "storage",
             Self::Hub => "hub",
+            Self::Wire => "wire",
+            Self::WireTunnel => "wire_tunnel",
+            Self::ConstantSignal => "constant_signal",
+            Self::Lever => "lever",
+            Self::LogicGate => "logic_gate",
+            Self::Transistor => "transistor",
         }
     }
 
@@ -107,6 +155,9 @@ impl BuildingKind {
             Self::Rotater => &[Default, Ccw, Rotate180],
             Self::Painter => &[Default, Mirrored, Double, Quad],
             Self::Miner => &[Default, Chainable],
+            Self::Wire => &[Default, Second],
+            Self::LogicGate => &[Default, Or, Not, Xor],
+            Self::Transistor => &[Default, Mirrored],
             _ => &[Default],
         }
     }
@@ -115,9 +166,28 @@ impl BuildingKind {
         self.variants().contains(&variant)
     }
 
-    /// `getIsReplaceable` : seuls les convoyeurs peuvent être écrasés par un placement.
+    /// `getLayer`.
+    pub const fn layer(self) -> Layer {
+        match self {
+            Self::Wire
+            | Self::WireTunnel
+            | Self::ConstantSignal
+            | Self::LogicGate
+            | Self::Transistor => Layer::Wires,
+            _ => Layer::Regular,
+        }
+    }
+
+    /// `getIsReplaceable` : seuls les convoyeurs et les câbles peuvent être écrasés par
+    /// un placement.
     pub const fn is_replaceable(self) -> bool {
-        matches!(self, Self::Belt)
+        matches!(self, Self::Belt | Self::Wire)
+    }
+
+    /// Le bâtiment porte un réglage ([`Building::config`]) : signal d'un émetteur
+    /// constant, état d'un levier.
+    pub const fn is_configurable(self) -> bool {
+        matches!(self, Self::ConstantSignal | Self::Lever)
     }
 
     /// `getIsRemovable` : le hub ne peut pas être supprimé.
@@ -127,7 +197,7 @@ impl BuildingKind {
 
     /// `getIsRotateable`.
     pub const fn is_rotatable(self) -> bool {
-        !matches!(self, Self::Hub)
+        !matches!(self, Self::Hub | Self::WireTunnel)
     }
 }
 
@@ -172,6 +242,67 @@ pub mod belt_variant {
 pub mod tunnel_variant {
     pub const SENDER: u8 = 0;
     pub const RECEIVER: u8 = 1;
+}
+
+/// Forme d'un câble, choisie par l'orientation automatique
+/// (`arrayWireRotationVariantToType`).
+pub mod wire_type {
+    pub const FORWARD: u8 = 0;
+    pub const TURN: u8 = 1;
+    pub const SPLIT: u8 = 2;
+    pub const CROSS: u8 = 3;
+}
+
+/// Rôle d'un pin de la couche wires (`enumPinSlotType`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PinKind {
+    /// Le bâtiment envoie une valeur sur le réseau.
+    Ejector,
+    /// Le bâtiment lit la valeur du réseau.
+    Acceptor,
+}
+
+/// Pin : se connecte au câble de la tuile voisine de `pos` dans la direction
+/// `direction`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PinSlot {
+    pub pos: TilePos,
+    pub direction: Direction,
+    pub kind: PinKind,
+}
+
+/// Pins locaux, dans l'ordre des `slots` de `WiredPinsComponent` (les portes
+/// écrivent leur résultat dans le premier).
+pub fn pins(kind: BuildingKind, variant: Variant) -> Vec<PinSlot> {
+    use Direction::{Bottom, Left, Right, Top};
+    use PinKind::{Acceptor, Ejector};
+    let pin = |direction, kind| PinSlot {
+        pos: TilePos::ZERO,
+        direction,
+        kind,
+    };
+    match kind {
+        BuildingKind::ConstantSignal | BuildingKind::Lever => vec![pin(Top, Ejector)],
+        BuildingKind::LogicGate if variant == Variant::Not => {
+            vec![pin(Top, Ejector), pin(Bottom, Acceptor)]
+        }
+        BuildingKind::LogicGate => {
+            vec![pin(Top, Ejector), pin(Left, Acceptor), pin(Right, Acceptor)]
+        }
+        BuildingKind::Transistor => {
+            let side = if variant == Variant::Mirrored {
+                Right
+            } else {
+                Left
+            };
+            vec![
+                pin(Top, Ejector),
+                pin(side, Acceptor),
+                pin(Bottom, Acceptor),
+            ]
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// Portée des tunnels par niveau (`undergroundBeltMaxTilesByTier`).
@@ -327,6 +458,7 @@ pub fn slots(kind: BuildingKind, variant: Variant, rotation_variant: u8) -> Slot
             }
             (a, vec![])
         }
+        Wire | WireTunnel | ConstantSignal | Lever | LogicGate | Transistor => (vec![], vec![]),
     };
     Slots {
         acceptors,
@@ -345,6 +477,10 @@ pub struct Building {
     /// Rotation choisie par le joueur, avant l'orientation automatique des convoyeurs
     /// (`originalRotation`).
     pub original_rotation: Rotation,
+    /// Réglage copié avec le bâtiment (`copyAdditionalStateTo`) : signal d'un émetteur
+    /// constant, `Bool(true)` pour un levier enclenché.
+    #[serde(default)]
+    pub config: Option<Item>,
 }
 
 impl Building {
@@ -373,6 +509,18 @@ impl Building {
 
     pub fn local_direction_to_world(&self, dir: Direction) -> Direction {
         dir.rotated(self.rotation)
+    }
+
+    /// Pins en coordonnées monde.
+    pub fn world_pins(&self) -> Vec<PinSlot> {
+        pins(self.kind, self.variant)
+            .into_iter()
+            .map(|p| PinSlot {
+                pos: self.local_to_world(p.pos),
+                direction: self.local_direction_to_world(p.direction),
+                kind: p.kind,
+            })
+            .collect()
     }
 
     /// Slots en coordonnées monde.
@@ -412,6 +560,7 @@ mod tests {
             origin: TilePos::new(x, y),
             rotation: rot,
             original_rotation: rot,
+            config: None,
         }
     }
 

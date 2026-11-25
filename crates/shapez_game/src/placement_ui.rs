@@ -1,11 +1,12 @@
 //! Placement des bâtiments : sélection, fantôme, rotation (R), variantes (T), pipette
-//! (Q), pose au clic, glisser de convoyeurs, suppression (X ou clic droit).
+//! (Q), pose au clic, glisser de convoyeurs et de câbles, suppression (X ou clic
+//! droit) sur la couche affichée.
 //! Port simplifié de `hud/parts/building_placer.js` et `building_placer_logic.js`.
 
 use bevy::prelude::*;
-use shapez_core::{Direction, Rotation, TilePos};
+use shapez_core::{Direction, Item, Rotation, TilePos};
 use shapez_sim::{
-    building::{Building, BuildingKind, Variant},
+    building::{BuildingKind, Layer, Variant},
     placement::{Placement, SimCommand},
     unlocks::{available_variants, is_unlocked},
 };
@@ -17,21 +18,73 @@ use crate::{
     editing_ui::{EditingSet, Editor},
     shop::OpenPanel,
     sim::Sim,
+    wires_ui::{ActiveLayer, WiresUiSet},
 };
 
-/// Barre d'outils : touche, bâtiment (ordre et touches du JS).
-pub const TOOLBAR: [(KeyCode, BuildingKind, &str); 10] = [
-    (KeyCode::Digit1, BuildingKind::Belt, "Convoyeur"),
-    (KeyCode::Digit2, BuildingKind::Balancer, "Equilibreur"),
-    (KeyCode::Digit3, BuildingKind::UndergroundBelt, "Tunnel"),
-    (KeyCode::Digit4, BuildingKind::Miner, "Extracteur"),
-    (KeyCode::Digit5, BuildingKind::Cutter, "Decoupeur"),
-    (KeyCode::Digit6, BuildingKind::Rotater, "Rotateur"),
-    (KeyCode::Digit7, BuildingKind::Stacker, "Empileur"),
-    (KeyCode::Digit8, BuildingKind::Mixer, "Melangeur"),
-    (KeyCode::Digit9, BuildingKind::Painter, "Peintre"),
-    (KeyCode::Digit0, BuildingKind::Trash, "Poubelle"),
+/// Entrée de barre d'outils : touche, libellé de la touche, bâtiment, nom.
+pub type ToolbarEntry = (KeyCode, &'static str, BuildingKind, &'static str);
+
+/// Barre de la couche normale (`HUDBuildingsToolbar`, touches du JS).
+pub const REGULAR_TOOLBAR: [ToolbarEntry; 12] = [
+    (KeyCode::Digit1, "1", BuildingKind::Belt, "Convoyeur"),
+    (KeyCode::Digit2, "2", BuildingKind::Balancer, "Equilibreur"),
+    (
+        KeyCode::Digit3,
+        "3",
+        BuildingKind::UndergroundBelt,
+        "Tunnel",
+    ),
+    (KeyCode::Digit4, "4", BuildingKind::Miner, "Extracteur"),
+    (KeyCode::Digit5, "5", BuildingKind::Cutter, "Decoupeur"),
+    (KeyCode::Digit6, "6", BuildingKind::Rotater, "Rotateur"),
+    (KeyCode::Digit7, "7", BuildingKind::Stacker, "Empileur"),
+    (KeyCode::Digit8, "8", BuildingKind::Mixer, "Melangeur"),
+    (KeyCode::Digit9, "9", BuildingKind::Painter, "Peintre"),
+    (KeyCode::Digit0, "0", BuildingKind::Trash, "Poubelle"),
+    (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
+    (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
 ];
+
+/// Barre de la couche wires (`HUDWiresToolbar`).
+pub const WIRES_TOOLBAR: [ToolbarEntry; 7] = [
+    (KeyCode::Digit1, "1", BuildingKind::Wire, "Cable"),
+    (KeyCode::Digit2, "2", BuildingKind::WireTunnel, "Croisement"),
+    (
+        KeyCode::Digit3,
+        "3",
+        BuildingKind::ConstantSignal,
+        "Signal constant",
+    ),
+    (
+        KeyCode::Digit4,
+        "4",
+        BuildingKind::LogicGate,
+        "Porte logique",
+    ),
+    (KeyCode::Digit8, "8", BuildingKind::Transistor, "Transistor"),
+    (KeyCode::KeyY, "Y", BuildingKind::Storage, "Stockage"),
+    (KeyCode::KeyI, "I", BuildingKind::Lever, "Levier"),
+];
+
+/// Barre d'outils de la couche.
+pub fn toolbar(layer: Layer) -> &'static [ToolbarEntry] {
+    match layer {
+        Layer::Regular => &REGULAR_TOOLBAR,
+        Layer::Wires => &WIRES_TOOLBAR,
+    }
+}
+
+/// Touche et nom d'un bâtiment, sur la barre de sa couche.
+pub fn toolbar_entry(kind: BuildingKind) -> Option<(&'static str, &'static str)> {
+    toolbar(kind.layer())
+        .iter()
+        .find(|(_, _, k, _)| *k == kind)
+        .map(|&(_, key, _, name)| (key, name))
+}
+
+/// Systèmes de pose, après les interactions de la couche wires.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PlacementSet;
 
 /// État du placement en cours.
 #[derive(Resource, Debug, Default, Clone)]
@@ -65,6 +118,12 @@ impl PlacementState {
                 (p.rotation, p.rotation_variant) =
                     sim.buildings.optimal_tunnel(tile, self.rotation, variant);
             }
+            BuildingKind::Wire => {
+                (p.rotation, p.rotation_variant) = sim.buildings.optimal_wire(tile, variant);
+            }
+            // Le JS ouvre une boîte de dialogue ; ici l'émetteur part sur « vrai » et un
+            // clic dessus fait défiler les signaux.
+            BuildingKind::ConstantSignal => p.config = Some(Item::Bool(true)),
             _ => {}
         }
         Some(p)
@@ -100,8 +159,10 @@ impl Plugin for PlacementUiPlugin {
                     update_toolbar,
                 )
                     .chain()
+                    .in_set(PlacementSet)
                     .after(CameraSet)
                     .after(EditingSet)
+                    .after(WiresUiSet)
                     .run_if(in_state(AppState::InGame)),
             );
     }
@@ -125,9 +186,10 @@ fn track_cursor(
 fn selection_keys(
     keys: Res<ButtonInput<KeyCode>>,
     sim: Res<Sim>,
+    layer: Res<ActiveLayer>,
     mut state: ResMut<PlacementState>,
 ) {
-    for (key, kind, _) in TOOLBAR {
+    for &(key, _, kind, _) in toolbar(layer.0) {
         if keys.just_pressed(key) && is_unlocked(kind, &sim.hub) {
             // Retaper la même touche désélectionne, comme dans le JS.
             if state.selected == Some(kind) {
@@ -155,7 +217,7 @@ fn selection_keys(
     if keys.just_pressed(KeyCode::KeyQ) {
         let picked = state
             .cursor_tile
-            .and_then(|t| sim.buildings.building_at(t))
+            .and_then(|t| sim.buildings.building_at_layer(t, layer.0))
             .map(|(_, b)| *b)
             .filter(|b| b.kind.is_rotatable() && is_unlocked(b.kind, &sim.hub));
         match picked {
@@ -179,6 +241,7 @@ fn place_and_remove(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     panel: Res<OpenPanel>,
+    layer: Res<ActiveLayer>,
     mut editor: ResMut<Editor>,
     mut sim: ResMut<Sim>,
     mut state: ResMut<PlacementState>,
@@ -202,8 +265,14 @@ fn place_and_remove(
     // même image, auquel cas `pressed` est déjà faux.
     let held = |b: MouseButton| mouse.pressed(b) || mouse.just_pressed(b);
     if held(MouseButton::Right) || keys.pressed(KeyCode::KeyX) {
-        if sim.buildings.at(tile).is_some() {
-            apply(&mut sim, SimCommand::Remove { tile });
+        if sim.buildings.at_layer(tile, layer.0).is_some() {
+            apply(
+                &mut sim,
+                SimCommand::Remove {
+                    tile,
+                    layer: layer.0,
+                },
+            );
         }
         state.drag_last = None;
         return;
@@ -280,14 +349,7 @@ fn update_ghost(
         }
         return;
     };
-    let building = Building {
-        kind: p.kind,
-        variant: p.variant,
-        rotation_variant: p.rotation_variant,
-        origin: p.origin,
-        rotation: p.rotation,
-        original_rotation: p.original_rotation,
-    };
+    let building = p.building();
     let (mut sprite, transform) = building_sprite(&building, &assets, 50.0);
     sprite.color = if sim.buildings.can_place(&p).is_ok() {
         Color::WHITE.with_alpha(0.6)
@@ -327,15 +389,18 @@ fn update_toolbar(
     state: Res<PlacementState>,
     sim: Res<Sim>,
     editor: Res<Editor>,
+    layer: Res<ActiveLayer>,
     mut text: Single<&mut Text, With<ToolbarText>>,
 ) {
     let mut s = String::new();
-    for (i, (_, kind, name)) in TOOLBAR.iter().enumerate() {
+    if layer.0 == Layer::Wires {
+        s.push_str("[Couche cables]  ");
+    }
+    for (_, key, kind, name) in toolbar(layer.0) {
         // Comme dans le JS, les bâtiments verrouillés n'apparaissent pas.
         if !is_unlocked(*kind, &sim.hub) {
             continue;
         }
-        let key = (i + 1) % 10;
         if state.selected == Some(*kind) {
             s.push_str(&format!("[{key} {name}]  "));
         } else {
@@ -362,10 +427,20 @@ fn update_toolbar(
             "\n{variant:?} - rotation {} (R, T = variante, Q = pipette, X/clic droit = supprimer)",
             state.rotation.degrees()
         ));
+    } else if layer.0 == Layer::Wires {
+        s.push_str(
+            "\nE = couche normale, clic sur un signal constant = changer sa valeur (Maj = en arriere), clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer",
+        );
     } else {
         s.push_str(
             "\nQ = pipette, X/clic droit = supprimer, Ctrl+glisser = selectionner, Ctrl+Z/Y = annuler/retablir, Ctrl+V = coller, M = repere, F = ameliorations, G = statistiques",
         );
+        if sim
+            .hub
+            .is_reward_unlocked(shapez_sim::hub_goals::Reward::WiresPainterAndLevers)
+        {
+            s.push_str(", E = couche cables");
+        }
     }
     if let Some((message, _)) = &editor.message {
         s.push_str(&format!("\n{message}"));
