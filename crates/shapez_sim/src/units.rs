@@ -6,7 +6,8 @@
 //! - une tuile de convoyeur vaut [`TILE`] unités de longueur (espacement des items
 //!   `0.63` → [`ITEM_SPACING`], virage `0.78` → [`CURVED_BELT_LENGTH`]) ;
 //! - une seconde de jeu vaut [`SECOND`] unités de temps, un tick en vaut [`TICK`] ;
-//! - les multiplicateurs d'amélioration sont en millièmes ([`PERMILLE`] = ×1).
+//! - les multiplicateurs d'amélioration sont en dix-millièmes ([`IMPROVEMENT_ONE`] = ×1 ;
+//!   le plus petit palier du JS vaut +0.0125).
 
 use crate::TICKS_PER_SECOND;
 
@@ -22,8 +23,8 @@ pub const SECOND: u64 = 60_000;
 /// Durée d'un tick.
 pub const TICK: u64 = SECOND / TICKS_PER_SECOND as u64;
 
-/// Multiplicateur ×1 en millièmes.
-pub const PERMILLE: u64 = 1_000;
+/// Multiplicateur ×1, en dix-millièmes.
+pub const IMPROVEMENT_ONE: u64 = 10_000;
 
 /// `globalConfig.beltSpeedItemsPerSecond`.
 const BELT_ITEMS_PER_SECOND: u64 = 2;
@@ -47,7 +48,7 @@ pub enum ProcessorKind {
 }
 
 /// Multiplicateurs des quatre familles d'améliorations (`upgradeImprovements`),
-/// en millièmes. Le shop arrive en M5 ; tout vaut ×1 pour l'instant.
+/// en dix-millièmes (voir [`crate::upgrades`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Upgrades {
     pub belt: u64,
@@ -59,10 +60,10 @@ pub struct Upgrades {
 impl Default for Upgrades {
     fn default() -> Self {
         Self {
-            belt: PERMILLE,
-            miner: PERMILLE,
-            processors: PERMILLE,
-            painting: PERMILLE,
+            belt: IMPROVEMENT_ONE,
+            miner: IMPROVEMENT_ONE,
+            processors: IMPROVEMENT_ONE,
+            painting: IMPROVEMENT_ONE,
         }
     }
 }
@@ -72,7 +73,7 @@ impl Upgrades {
     /// (210 unités à ×1).
     pub fn belt_speed_per_tick(&self) -> u32 {
         (BELT_ITEMS_PER_SECOND * u64::from(ITEM_SPACING) * self.belt
-            / (TICKS_PER_SECOND as u64 * PERMILLE)) as u32
+            / (TICKS_PER_SECOND as u64 * IMPROVEMENT_ONE)) as u32
     }
 
     /// Progression d'un slot d'éjection par tick, où [`TILE`] = 1.0
@@ -83,7 +84,7 @@ impl Upgrades {
 
     /// Durée d'extraction : `1 / (beltSpeed / 5 × amélioration)`.
     pub fn miner_duration(&self) -> u64 {
-        SECOND * PERMILLE * 5 / (BELT_ITEMS_PER_SECOND * self.miner)
+        SECOND * IMPROVEMENT_ONE * 5 / (BELT_ITEMS_PER_SECOND * self.miner)
     }
 
     /// Durée d'une charge (`1 / getProcessorBaseSpeed`).
@@ -101,14 +102,14 @@ impl Upgrades {
             PainterDouble => (self.painting, 8),
             PainterQuad => (self.painting, 2),
         };
-        SECOND * PERMILLE * divisor / (BELT_ITEMS_PER_SECOND * improvement)
+        SECOND * IMPROVEMENT_ONE * divisor / (BELT_ITEMS_PER_SECOND * improvement)
     }
 
     /// Temps de traversée d'un tunnel (`UndergroundBeltComponent.tryAcceptTunneledItem`) :
     /// `(distance + 1.5) / beltSpeed / itemSpacing`.
     pub fn tunnel_travel_duration(&self, distance: u32) -> u64 {
         // (2d + 3) / 2 / (2 × amélioration) / 0.63
-        SECOND * (2 * u64::from(distance) + 3) * PERMILLE * 100
+        SECOND * (2 * u64::from(distance) + 3) * IMPROVEMENT_ONE * 100
             / (2 * BELT_ITEMS_PER_SECOND * self.belt * 63)
     }
 }
@@ -136,7 +137,7 @@ mod tests {
     #[test]
     fn upgrades_scale_speeds() {
         let u = Upgrades {
-            belt: 2 * PERMILLE,
+            belt: 2 * IMPROVEMENT_ONE,
             ..Upgrades::default()
         };
         assert_eq!(u.belt_speed_per_tick(), 420);
