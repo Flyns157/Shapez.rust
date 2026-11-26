@@ -126,8 +126,8 @@ pub fn screenshot_dir() -> PathBuf {
 
 /// Nom du fichier : `base-<secondes depuis 1970>.png`, le JS proposait `base.png`.
 fn file_name() -> String {
-    let secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
+    let secs = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     format!("base-{secs}.png")
 }
@@ -220,7 +220,9 @@ fn capture(mut commands: Commands, exporting: Option<ResMut<Exporting>>) {
         return;
     }
     exporting.captured = true;
-    if let Some(dir) = exporting.path.parent()
+    // Sur le web, `save_to_disk` déclenche un téléchargement : pas de dossier à créer.
+    if !cfg!(target_arch = "wasm32")
+        && let Some(dir) = exporting.path.parent()
         && let Err(err) = std::fs::create_dir_all(dir)
     {
         warn!("dossier des captures {} : {err}", dir.display());
