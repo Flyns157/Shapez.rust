@@ -409,6 +409,9 @@ pub struct Factory {
     ejectors_dirty: bool,
     tunnels_dirty: bool,
     miners_dirty: bool,
+    /// Désactive les chemins dormants, pour vérifier qu'ils ne changent rien.
+    #[serde(skip)]
+    no_dormancy: bool,
 }
 
 fn belt_length(b: &Building) -> u32 {
@@ -816,6 +819,17 @@ impl Factory {
     // Tick
     // ------------------------------------------------------------------
 
+    /// Met à jour tous les chemins à chaque tick, comme le JS : sert aux tests qui
+    /// vérifient que les chemins dormants donnent exactement le même résultat.
+    pub fn disable_dormancy(&mut self) {
+        self.no_dormancy = true;
+    }
+
+    /// Nombre de chemins endormis.
+    pub fn asleep_paths(&self) -> usize {
+        self.paths.values().filter(|p| p.is_asleep()).count()
+    }
+
     /// Exécute un tick de logistique, dans l'ordre des systèmes du JS.
     pub fn tick(&mut self, ctx: &mut TickContext<'_>) {
         if std::mem::take(&mut self.ejectors_dirty) {
@@ -896,36 +910,68 @@ impl Factory {
         }
     }
 
+    /// Avance chaque chemin, dans l'ordre des chemins du JS. Les chemins endormis
+    /// (§5.4) sont sautés tant que leur `update` ne pourrait rien changer :
+    ///
+    /// - vides, ou débouchant sur le vide ou sur eux-mêmes : seul un évènement qui
+    ///   modifie le chemin (item reçu, topologie) les réveille, et ces évènements passent
+    ///   tous par une méthode de [`BeltPath`] qui le fait ;
+    /// - débouchant sur un autre chemin : ils dormaient parce que celui-ci refusait leur
+    ///   item de tête ; ils repartent dès qu'il peut l'accepter. Ce chemin n'a qu'une
+    ///   seule entrée, eux, donc rien d'autre ne peut changer leur sort ;
+    /// - débouchant sur un bâtiment : ils ne dorment que vides, l'accepteur pouvant se
+    ///   libérer à tout moment.
     fn update_belts(&mut self, ctx: &mut TickContext<'_>) {
         let speed = ctx.upgrades.belt_speed_per_tick();
         for i in 0..self.path_order.len() {
             let p = self.path_order[i];
-            match self.paths[p].target {
-                PathTarget::None => self.paths[p].update(speed, Acceptor::None),
-                PathTarget::Belt(next) => match self.belt_path.get(next).copied() {
-                    Some(np) if np == p => self.paths[p].update(speed, Acceptor::SelfLoop),
-                    Some(np) => {
-                        let [path, next_path] = self
-                            .paths
-                            .get_disjoint_mut([p, np])
-                            .expect("chemins distincts");
-                        let mut accept = |item| next_path.try_accept_item(item, speed);
-                        path.update(speed, Acceptor::Other(&mut accept));
-                    }
-                    None => self.paths[p].update(speed, Acceptor::None),
-                },
-                PathTarget::Slot {
-                    building,
-                    slot,
-                    filter,
-                } => {
+            let path = &self.paths[p];
+            let next = match path.target {
+                PathTarget::Belt(next) => self.belt_path.get(next).copied(),
+                _ => None,
+            };
+            if path.is_asleep()
+                && !self.no_dormancy
+                && !next.is_some_and(|np| np != p && self.paths[np].can_accept_item())
+            {
+                continue;
+            }
+            match (path.target, next) {
+                (PathTarget::Belt(_), Some(np)) if np == p => {
+                    let changed = self.paths[p].update(speed, Acceptor::SelfLoop);
+                    self.paths[p].sleep_if_idle(changed);
+                }
+                (PathTarget::Belt(_), Some(np)) => {
+                    let [path, next_path] = self
+                        .paths
+                        .get_disjoint_mut([p, np])
+                        .expect("chemins distincts");
+                    let mut accept = |item| next_path.try_accept_item(item, speed);
+                    let changed = path.update(speed, Acceptor::Other(&mut accept));
+                    path.sleep_if_idle(changed);
+                }
+                (PathTarget::None | PathTarget::Belt(_), _) => {
+                    let changed = self.paths[p].update(speed, Acceptor::None);
+                    self.paths[p].sleep_if_idle(changed);
+                }
+                (
+                    PathTarget::Slot {
+                        building,
+                        slot,
+                        filter,
+                    },
+                    _,
+                ) => {
                     let receivers = &mut self.receivers;
                     let wiring = &*ctx.wiring;
                     let mut accept = |item| {
                         filter_accepts(filter, item)
                             && receivers.try_take(building, usize::from(slot), item, wiring)
                     };
-                    self.paths[p].update(speed, Acceptor::Other(&mut accept));
+                    let path = &mut self.paths[p];
+                    path.update(speed, Acceptor::Other(&mut accept));
+                    let empty = path.len_items() == 0;
+                    path.sleep_if_idle(!empty);
                 }
             }
         }

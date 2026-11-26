@@ -59,6 +59,23 @@ impl std::fmt::Debug for Acceptor<'_> {
     }
 }
 
+/// Chemin endormi (§5.4, « chemins dormants ») : son dernier `update` n'a rien changé et
+/// le suivant ne changerait rien non plus tant qu'un évènement extérieur ne le modifie
+/// pas. Toute méthode qui modifie le chemin le réveille.
+///
+/// C'est un cache dérivé de l'état : il n'est ni sauvegardé ni comparé, et un chemin
+/// réveillé à tort ne fait que refaire un `update` sans effet.
+#[derive(Debug, Clone, Copy, Default)]
+struct Dormancy(bool);
+
+impl PartialEq for Dormancy {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl Eq for Dormancy {}
+
 /// Chemin de convoyeurs et ses items.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BeltPath {
@@ -71,6 +88,8 @@ pub struct BeltPath {
     /// Cible calculée par la simulation à chaque changement de voisinage.
     pub target: PathTarget,
     num_compressed: usize,
+    #[serde(skip)]
+    asleep: Dormancy,
 }
 
 impl BeltPath {
@@ -85,7 +104,24 @@ impl BeltPath {
             total_length,
             target: PathTarget::None,
             num_compressed: 0,
+            asleep: Dormancy(false),
         }
+    }
+
+    /// Vrai si le chemin dort : voir [`Self::sleep_if_idle`].
+    pub fn is_asleep(&self) -> bool {
+        self.asleep.0
+    }
+
+    /// Endort le chemin si `update` n'a rien changé (`changed` faux). À n'appeler que
+    /// si un nouvel `update` ne pourrait rien changer non plus sans évènement extérieur :
+    /// la simulation s'en assure selon la cible du chemin.
+    pub fn sleep_if_idle(&mut self, changed: bool) {
+        self.asleep.0 = !changed;
+    }
+
+    fn wake(&mut self) {
+        self.asleep.0 = false;
     }
 
     pub fn belts(&self) -> &[BeltEntry] {
@@ -129,6 +165,7 @@ impl BeltPath {
 
     /// `clearAllItems`.
     pub fn clear_items(&mut self) {
+        self.wake();
         self.items.clear();
         self.spacing_to_first = self.total_length;
         self.num_compressed = 0;
@@ -136,6 +173,7 @@ impl BeltPath {
 
     /// `onPathChanged` : à appeler quand la cible a été recalculée.
     pub fn on_path_changed(&mut self, target: PathTarget) {
+        self.wake();
         self.target = target;
         self.num_compressed = 0;
     }
@@ -149,6 +187,7 @@ impl BeltPath {
         if self.spacing_to_first < ITEM_SPACING {
             return false;
         }
+        self.wake();
         let max_progress = self.spacing_to_first - ITEM_SPACING;
         let initial = max_progress.min(speed);
         self.items
@@ -158,11 +197,14 @@ impl BeltPath {
     }
 
     /// `update` : avance les items de `speed` unités, en poussant le premier bloqué
-    /// contre les suivants, et livre l'item de tête à l'accepteur.
-    pub fn update(&mut self, speed: u32, mut acceptor: Acceptor<'_>) {
+    /// contre les suivants, et livre l'item de tête à l'accepteur. Renvoie vrai si un
+    /// item a bougé ou a été livré.
+    pub fn update(&mut self, speed: u32, mut acceptor: Acceptor<'_>) -> bool {
         if self.items.is_empty() {
-            return;
+            return false;
         }
+        let mut changed = false;
+        let compressed_before = self.num_compressed;
         let speed_i = i64::from(speed);
         let spacing = i64::from(ITEM_SPACING);
         let mut first = true;
@@ -184,12 +226,14 @@ impl BeltPath {
                 clamped = 0;
             }
             remaining -= clamped;
+            changed |= clamped > 0;
             self.items[idx].0 -= clamped as u32;
             self.spacing_to_first += clamped as u32;
 
             if first && self.items[idx].0 == 0 {
                 let item = self.items[idx].1;
                 if self.deliver(item, speed, &mut acceptor) {
+                    changed = true;
                     self.items.pop_back();
                     if self.num_compressed > 0
                         && last >= 1
@@ -220,9 +264,11 @@ impl BeltPath {
         if let Some(&(0, item)) = self.items.back()
             && self.deliver(item, speed, &mut acceptor)
         {
+            changed = true;
             self.items.pop_back();
             self.num_compressed = self.num_compressed.saturating_sub(1);
         }
+        changed || self.num_compressed != compressed_before
     }
 
     fn deliver(&mut self, item: Item, speed: u32, acceptor: &mut Acceptor<'_>) -> bool {
@@ -235,6 +281,7 @@ impl BeltPath {
 
     /// `extendOnEnd`.
     pub fn extend_on_end(&mut self, belt: BeltEntry) {
+        self.wake();
         self.belts.push(belt);
         self.total_length += belt.length;
         match self.items.back_mut() {
@@ -245,6 +292,7 @@ impl BeltPath {
 
     /// `extendOnBeginning` : le nouveau convoyeur est vide.
     pub fn extend_on_beginning(&mut self, belt: BeltEntry) {
+        self.wake();
         self.total_length += belt.length;
         self.spacing_to_first += belt.length;
         self.belts.insert(0, belt);
@@ -252,6 +300,7 @@ impl BeltPath {
 
     /// `extendByPath` : ajoute `other` à la suite de ce chemin.
     pub fn extend_by_path(&mut self, other: BeltPath) {
+        self.wake();
         let old_length = self.total_length;
         for belt in &other.belts {
             self.belts.push(*belt);
@@ -266,6 +315,7 @@ impl BeltPath {
 
     /// `deleteEntityOnEnd` : les items du dernier convoyeur sont perdus.
     pub fn delete_on_end(&mut self) {
+        self.wake();
         let belt = self.belts.pop().expect("chemin non vide");
         self.total_length -= belt.length;
         if self.items.is_empty() {
@@ -292,6 +342,7 @@ impl BeltPath {
 
     /// `deleteEntityOnStart` : les items du premier convoyeur sont perdus.
     pub fn delete_on_start(&mut self) {
+        self.wake();
         let belt = self.belts.remove(0);
         self.total_length -= belt.length;
         if self.items.is_empty() {
@@ -320,6 +371,7 @@ impl BeltPath {
     /// `deleteEntityOnPathSplitIntoTwo` : retire le convoyeur d'indice `index`
     /// (ni le premier ni le dernier) et renvoie la seconde moitié.
     pub fn split_at(&mut self, index: usize) -> BeltPath {
+        self.wake();
         assert!(
             index > 0 && index + 1 < self.belts.len(),
             "coupure invalide"
