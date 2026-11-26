@@ -1,9 +1,8 @@
-//! Repères (M pour en poser un, clic pour y aller, Maj+clic pour le retirer) et formes
+//! Repères (M par défaut pour en poser un, clic pour y aller, Maj+clic pour le retirer) et formes
 //! épinglées (objectif courant, formes de plan, formes choisies dans le shop) :
 //! `hud/parts/waypoints.js` et `hud/parts/pinned_shapes.js`, simplifiés.
 
 use bevy::{
-    input::keyboard::Key,
     prelude::*,
     ui_widgets::{Activate, ActivateOnPress, Button},
 };
@@ -17,8 +16,8 @@ use shapez_sim::{
 use crate::{
     AppState,
     camera::{MainCamera, Zoom, tile_to_world, world_to_tile},
-    editing_ui::letter,
     i18n::t,
+    keybindings::{Action, just_pressed, tk},
     shape_textures::ShapeTextures,
     sim::Sim,
     theme::ThemedText,
@@ -72,13 +71,12 @@ fn spawn_panel(mut commands: Commands) {
 
 fn add_waypoint(
     keys: Res<ButtonInput<KeyCode>>,
-    letters: Res<ButtonInput<Key>>,
     zoom: Res<Zoom>,
     camera: Single<&Transform, With<MainCamera>>,
     mut sim: ResMut<Sim>,
 ) {
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
-    if ctrl || !letter(&letters, 'm') {
+    if ctrl || !just_pressed(&keys, Action::CreateMarker) {
         return;
     }
     let center = world_to_tile(camera.translation.truncate());
@@ -226,7 +224,7 @@ fn update_panel(
                 format!(
                     "{} {}",
                     t("ingame.waypoints.waypoints"),
-                    t("port.marks.help")
+                    tk("port.marks.help")
                 ),
                 14.0,
             ))

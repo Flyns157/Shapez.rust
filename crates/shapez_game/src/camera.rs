@@ -6,7 +6,10 @@ use bevy::{
     prelude::*,
 };
 
-use crate::AppState;
+use crate::{
+    AppState,
+    keybindings::{Action, pressed},
+};
 
 /// Taille d'une tuile en unités monde (`globalConfig.tileSize`).
 pub const TILE_SIZE: f32 = 32.0;
@@ -87,16 +90,16 @@ fn keyboard_pan(
         return;
     }
     let mut dir = Vec2::ZERO;
-    if keys.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]) {
+    if pressed(&keys, Action::MapMoveUp) || keys.pressed(KeyCode::ArrowUp) {
         dir.y += 1.0;
     }
-    if keys.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]) {
+    if pressed(&keys, Action::MapMoveDown) || keys.pressed(KeyCode::ArrowDown) {
         dir.y -= 1.0;
     }
-    if keys.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]) {
+    if pressed(&keys, Action::MapMoveLeft) || keys.pressed(KeyCode::ArrowLeft) {
         dir.x -= 1.0;
     }
-    if keys.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]) {
+    if pressed(&keys, Action::MapMoveRight) || keys.pressed(KeyCode::ArrowRight) {
         dir.x += 1.0;
     }
     if dir != Vec2::ZERO {

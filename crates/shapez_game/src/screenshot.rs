@@ -1,5 +1,5 @@
 //! Export de toute la base en image (port de `hud/parts/screenshot_exporter.js`, touche
-//! F3) : une seconde caméra rend la zone des bâtiments dans une image, enregistrée en PNG
+//! F3 par défaut) : une seconde caméra rend la zone des bâtiments dans une image, enregistrée en PNG
 //! dans le dossier des captures.
 //!
 //! Le JS prévient d'abord que l'export peut être long ; ici, il ne bloque pas le jeu :
@@ -23,6 +23,7 @@ use crate::{
     camera::TILE_SIZE,
     editing_ui::Editor,
     i18n::{t, tf},
+    keybindings::{Action, just_pressed},
     settings::Settings,
     sim::Sim,
     theme::active,
@@ -160,7 +161,7 @@ fn start_export(
     mut images: ResMut<Assets<Image>>,
     mut editor: ResMut<Editor>,
 ) {
-    if !keys.just_pressed(KeyCode::F3) || exporting.is_some() {
+    if !just_pressed(&keys, Action::ExportScreenshot) || exporting.is_some() {
         return;
     }
     let area = ExportArea::around(sim.buildings.iter().map(|(_, b)| b.bounds()));

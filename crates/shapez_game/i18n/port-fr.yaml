@@ -1,24 +1,24 @@
 # Textes propres au portage Rust, absents des traductions du jeu d'origine.
 port:
     hud:
-        status: Tick <tick> - vitesse x<speed> - graine <seed> (ZQSD/flèches, molette, clic milieu ; Tab = vitesse, Espace = pause, Échap = menu)
+        status: Tick <tick> - vitesse x<speed> - graine <seed> (<mapMoveUp><mapMoveLeft><mapMoveDown><mapMoveRight>/flèches, molette, clic milieu ; Tab = vitesse, Espace = pause, Échap = menu)
         goal: "<level> - livrer <shape> : <delivered> / <required>"
         goalPerSecond: "<level> - livrer <shape> : <delivered> / <required> par seconde"
         freeplayLevel: Mode libre, niveau <level>
         wiresLayer: "[Couche câbles]"
-        blueprint: "Plan : <count> bâtiments, coût <cost> formes de plan (en stock : <stock>) - clic = poser, R = tourner, clic droit/Échap = annuler"
-        selection: "Sélection : <count> bâtiments - Suppr/X = supprimer, B = vider, Ctrl+C = copier, Ctrl+X = couper, Échap = annuler"
-        placing: <variant> - rotation <degrees>° (R, T = variante, Q = pipette, X/clic droit = supprimer)
-        wiresHelp: E = couche normale, clic sur un signal constant = changer sa valeur, clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer
-        help: Q = pipette, X/clic droit = supprimer, Ctrl+glisser = sélectionner, Ctrl+Z/Y = annuler/rétablir, Ctrl+V = coller, M = repère, F = améliorations, G = statistiques, F3 = exporter la base
-        helpWires: ", E = couche câbles"
+        blueprint: "Plan : <count> bâtiments, coût <cost> formes de plan (en stock : <stock>) - clic = poser, <rotateWhilePlacing> = tourner, clic droit/Échap = annuler"
+        selection: "Sélection : <count> bâtiments - <confirmMassDelete>/X = supprimer, <massSelectClear> = vider, Ctrl+C = copier, Ctrl+X = couper, Échap = annuler"
+        placing: <variant> - rotation <degrees>° (<rotateWhilePlacing>, <cycleBuildingVariants> = variante, <pipette> = pipette, X/clic droit = supprimer)
+        wiresHelp: <switchLayers> = couche normale, clic sur un signal constant = changer sa valeur, clic sur un levier = basculer, <pipette> = pipette, X/clic droit = supprimer
+        help: <pipette> = pipette, X/clic droit = supprimer, Ctrl+glisser = sélectionner, Ctrl+Z/Y = annuler/rétablir, Ctrl+V = coller, <createMarker> = repère, <menuOpenShop> = améliorations, <menuOpenStats> = statistiques, <exportScreenshot> = exporter la base
+        helpWires: ", <switchLayers> = couche câbles"
     notify:
         screenshotStarted: "Export de la base en cours…"
         screenshotSaved: "Base exportée : <path>"
         screenshotFailed: "Échec de l'export de la base vers <path>"
         newBuildings: "Nouveau : <list>"
         buildingKey: <name> (touche <key>)
-        buildingKeyWires: <name> (touche <key>, couche câbles avec E)
+        buildingKeyWires: <name> (touche <key>, couche câbles avec <switchLayers>)
         upgradeBought: "Amélioration achetée : <name>, <tier>"
     editing:
         nothingToUndo: Rien à annuler
@@ -41,15 +41,15 @@ port:
         minutes: <minutes> min
         hoursMinutes: <hours> h <minutes> min
     marks:
-        help: (M = ajouter, Maj+clic = retirer)
+        help: (<createMarker> = ajouter, Maj+clic = retirer)
         pinned: Formes épinglées (Maj+clic = retirer)
     shop:
-        help: (F ou Échap pour fermer ; clic sur une forme pour l'épingler)
+        help: (<menuOpenShop> ou Échap pour fermer ; clic sur une forme pour l'épingler)
         tier: "<name> - <tier> : <from> -> <to>"
         maxTier: <name> - niveau maximal (<mult>)
         pinned: (épinglée)
     statistics:
-        help: (G pour fermer)
+        help: (<menuOpenStats> pour fermer)
         empty: "Rien pour l'instant : les débits portent sur les 10 dernières secondes."
     signal:
         hint: Cliquez sur une valeur, ou tapez un code puis Entrée (Échap = annuler).
@@ -69,3 +69,6 @@ port:
         rotate180: demi-tour
         stack: empilement
         paint: peinture
+    keybindings:
+        change: Changer
+        reset: Réinitialiser

@@ -245,6 +245,12 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 | Changer le signal d'un émetteur constant | clic dessus sur la couche câbles, puis choisir une valeur ou taper un code (`1`, `false`, `red`, `CuCuCuCu`…) et Entrée |
 | Lecteur, filtre, afficheur | U, O, P (couche normale ou câbles) |
 | Processeur virtuel, analyseur, comparateur | 5, 6, 7 sur la couche câbles (T : variante du processeur) |
+| Exporter la base en image | F3 |
+
+Ce sont les touches par défaut. Les touches simples (bâtiments, déplacement, pipette,
+rotation, variante, améliorations, statistiques, couche, repère, export, vider et supprimer
+la sélection) se changent dans **Paramètres → Contrôles**. Les raccourcis Ctrl, Échap,
+Espace, Tab, les flèches et X restent fixes.
 
 ### 6. Lancer les tests
 
@@ -334,6 +340,13 @@ En partie, **F3** exporte toute la base en PNG, comme le jeu d'origine : l'image
 tous les bâtiments (128 pixels par chunk, moins pour une très grande base). Elle est écrite
 dans le dossier `screenshots` du dossier de données (à côté des sauvegardes), ou dans
 celui indiqué par `SHAPEZ_SCREENSHOT_DIR`.
+
+L'écran **Contrôles** liste les touches par catégorie, comme le jeu d'origine : « Changer »
+attend la nouvelle touche (Échap annule), « Réinitialiser » revient à la touche par défaut.
+Les touches sont physiques : celle à la place du W d'un clavier QWERTY reste « aller en
+haut » sur un AZERTY. Leur libellé suit l'agencement du clavier dès qu'elles ont été
+tapées une fois ; avant, c'est le nom QWERTY. Seules les touches changées sont
+enregistrées, sous `keybindings`.
 
 Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
 de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :

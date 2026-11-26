@@ -11,6 +11,8 @@ pub mod editing_ui;
 pub mod gallery;
 pub mod i18n;
 pub mod items_view;
+pub mod keybindings;
+pub mod keybindings_ui;
 pub mod main_menu;
 pub mod map_render;
 pub mod marks_ui;
@@ -81,7 +83,11 @@ impl Plugin for GamePlugin {
             underlays::UnderlaysPlugin,
             signal_edit::SignalEditPlugin,
         ))
-        .add_plugins(screenshot::ScreenshotPlugin)
+        .add_plugins((
+            screenshot::ScreenshotPlugin,
+            keybindings::KeybindingsPlugin,
+            keybindings_ui::KeybindingsUiPlugin,
+        ))
         .add_systems(Startup, spawn_camera);
     }
 }

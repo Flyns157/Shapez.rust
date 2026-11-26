@@ -3,24 +3,24 @@
 # A language without its own `port-<id>.yaml` falls back to this file.
 port:
     hud:
-        status: Tick <tick> - speed x<speed> - seed <seed> (WASD/arrows, wheel, middle click; Tab = speed, Space = pause, Esc = menu)
+        status: Tick <tick> - speed x<speed> - seed <seed> (<mapMoveUp><mapMoveLeft><mapMoveDown><mapMoveRight>/arrows, wheel, middle click; Tab = speed, Space = pause, Esc = menu)
         goal: "<level> - deliver <shape>: <delivered> / <required>"
         goalPerSecond: "<level> - deliver <shape>: <delivered> / <required> per second"
         freeplayLevel: Free play, level <level>
         wiresLayer: "[Wires layer]"
-        blueprint: "Blueprint: <count> buildings, costs <cost> blueprint shapes (stored: <stock>) - click = place, R = rotate, right click/Esc = cancel"
-        selection: "Selection: <count> buildings - Del/X = delete, B = clear items, Ctrl+C = copy, Ctrl+X = cut, Esc = cancel"
-        placing: <variant> - rotation <degrees>° (R, T = variant, Q = pipette, X/right click = delete)
-        wiresHelp: E = regular layer, click a constant signal = change its value, click a lever = toggle, Q = pipette, X/right click = delete
-        help: Q = pipette, X/right click = delete, Ctrl+drag = select, Ctrl+Z/Y = undo/redo, Ctrl+V = paste, M = marker, F = upgrades, G = statistics, F3 = export base
-        helpWires: ", E = wires layer"
+        blueprint: "Blueprint: <count> buildings, costs <cost> blueprint shapes (stored: <stock>) - click = place, <rotateWhilePlacing> = rotate, right click/Esc = cancel"
+        selection: "Selection: <count> buildings - <confirmMassDelete>/X = delete, <massSelectClear> = clear items, Ctrl+C = copy, Ctrl+X = cut, Esc = cancel"
+        placing: <variant> - rotation <degrees>° (<rotateWhilePlacing>, <cycleBuildingVariants> = variant, <pipette> = pipette, X/right click = delete)
+        wiresHelp: <switchLayers> = regular layer, click a constant signal = change its value, click a lever = toggle, <pipette> = pipette, X/right click = delete
+        help: <pipette> = pipette, X/right click = delete, Ctrl+drag = select, Ctrl+Z/Y = undo/redo, Ctrl+V = paste, <createMarker> = marker, <menuOpenShop> = upgrades, <menuOpenStats> = statistics, <exportScreenshot> = export base
+        helpWires: ", <switchLayers> = wires layer"
     notify:
         screenshotStarted: "Exporting the base…"
         screenshotSaved: "Base exported: <path>"
         screenshotFailed: "Could not export the base to <path>"
         newBuildings: "New: <list>"
         buildingKey: <name> (key <key>)
-        buildingKeyWires: <name> (key <key>, wires layer with E)
+        buildingKeyWires: <name> (key <key>, wires layer with <switchLayers>)
         upgradeBought: "Upgrade bought: <name>, <tier>"
     editing:
         nothingToUndo: Nothing to undo
@@ -43,15 +43,15 @@ port:
         minutes: <minutes> min
         hoursMinutes: <hours> h <minutes> min
     marks:
-        help: (M = add, Shift+click = remove)
+        help: (<createMarker> = add, Shift+click = remove)
         pinned: Pinned shapes (Shift+click = remove)
     shop:
-        help: (F or Esc to close; click a shape to pin it)
+        help: (<menuOpenShop> or Esc to close; click a shape to pin it)
         tier: "<name> - <tier>: <from> -> <to>"
         maxTier: <name> - maximum level (<mult>)
         pinned: (pinned)
     statistics:
-        help: (G to close)
+        help: (<menuOpenStats> to close)
         empty: "Nothing yet: rates cover the last 10 seconds."
     signal:
         hint: Click a value, or type a code then Enter (Esc = cancel).
@@ -71,3 +71,6 @@ port:
         rotate180: rotate 180°
         stack: stack
         paint: paint
+    keybindings:
+        change: Change
+        reset: Reset

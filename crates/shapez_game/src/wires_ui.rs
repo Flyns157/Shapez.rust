@@ -20,6 +20,7 @@ use crate::{
     buildings_view::{BuildingView, WIRES_OVERLAY_Z, WIRES_Z, wire_sprite_path},
     camera::{CameraSet, MainCamera, TILE_SIZE, tile_to_world},
     editing_ui::{EditingSet, Editor},
+    keybindings::{Action, just_pressed},
     placement_ui::PlacementState,
     shape_textures::ShapeTextures,
     shop::OpenPanel,
@@ -119,7 +120,7 @@ fn switch_layer(
     mut layer: ResMut<ActiveLayer>,
     mut placement: ResMut<PlacementState>,
 ) {
-    if !keys.just_pressed(KeyCode::KeyE)
+    if !just_pressed(&keys, Action::SwitchLayers)
         || panel.is_open()
         || !sim.hub.is_reward_unlocked(Reward::WiresPainterAndLevers)
     {
