@@ -27,6 +27,7 @@ pub mod settings_ui;
 pub mod shape_textures;
 pub mod shop;
 pub mod signal_edit;
+pub mod silhouettes;
 pub mod sim;
 pub mod state;
 pub mod theme;
