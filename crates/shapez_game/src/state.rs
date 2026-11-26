@@ -12,6 +12,8 @@ pub enum AppState {
     InGame,
     /// Galerie des formes rastérisées (jalon M1).
     ShapeGallery,
+    /// Écran des paramètres, ouvert depuis le menu principal.
+    Settings,
 }
 
 #[derive(Debug, Default)]

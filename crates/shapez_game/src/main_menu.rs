@@ -44,6 +44,7 @@ enum MenuButton {
     Continue(String),
     NewGame,
     Gallery,
+    Settings,
     Load(String),
     Delete(String),
 }
@@ -184,6 +185,12 @@ fn refresh_saves(
                 420.0,
                 BUTTON,
             ));
+            p.spawn(button(
+                MenuButton::Settings,
+                t("settings.title"),
+                420.0,
+                BUTTON,
+            ));
             if !status.is_empty() {
                 p.spawn((label(status, 16.0), TextColor(Color::srgb(1.0, 0.5, 0.45))));
             }
@@ -260,6 +267,7 @@ fn on_activate(
             next.set(AppState::InGame);
         }
         MenuButton::Gallery => next.set(AppState::ShapeGallery),
+        MenuButton::Settings => next.set(AppState::Settings),
         MenuButton::Continue(name) | MenuButton::Load(name) => {
             let loaded = dir
                 .ok_or_else(|| t("port.menu.noSaveFolder"))

@@ -18,7 +18,7 @@ shapez_render_shapes = { path = "crates/shapez_render_shapes" }
 shapez_save = { path = "crates/shapez_save" }
 slotmap = { version = "1.0", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
-bevy = { version = "0.20.1", default-features = false, features = ["2d", "ui", "audio", "png", "wav"] }
+bevy = { version = "0.20.1", default-features = false, features = ["2d", "ui", "audio", "png", "wav", "mp3"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
