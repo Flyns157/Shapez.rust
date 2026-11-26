@@ -259,6 +259,22 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+### 7. Mesurer les performances
+
+```sh
+cargo bench -p shapez_sim
+```
+
+Ces benchmarks mesurent un tick complet de la simulation sur deux usines de 10 000 et
+100 000 tuiles de convoyeur. Avec `SHAPEZ_BENCH_FULL=1`, la taille de 500 000 tuiles,
+l'objectif du plan, s'ajoute ; sa préparation est plus longue.
+
+- `rings` : des anneaux fermés dont tous les items tournent ;
+- `blocked` : des lignes saturées dont plus rien ne bouge.
+
+La génération d'un chunk est aussi mesurée. La CI lance ces benchmarks sur `main`
+uniquement.
+
 ## Compiler pour Windows depuis Linux
 
 On peut produire un `.exe` Windows depuis Linux avec la cible GNU et MinGW. Exemple sous
