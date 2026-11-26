@@ -10,6 +10,9 @@ Les sprites, sons, polices et traductions copiés par `cargo xtask import-assets
 proviennent de res_raw/, res/ et translations/ du dépôt d'origine, sous la même licence.
 La musique d'origine n'est importée qu'avec `--music` : ses droits sont à vérifier
 avant toute distribution publique.
+Les polices Noto téléchargées avec `--fonts` (assets/fonts-noto/) viennent de
+https://github.com/notofonts ; elles sont sous SIL Open Font License 1.1, dont le texte
+est téléchargé avec elles (LICENSE-NotoSans.txt, LICENSE-NotoSansCJK.txt).
 
 « shapez » et son logo sont des marques de tobspr Games. Ce projet n'est ni affilié ni
 approuvé par tobspr Games.

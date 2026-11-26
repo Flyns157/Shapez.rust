@@ -29,6 +29,7 @@ rustc-ice-*.txt
 /assets/sounds
 /assets/i18n
 /assets/fonts
+/assets/fonts-noto
 /assets/IMPORTED.txt
 
 # Clone du code source de shapez.io, s'il est placé dans ce dépôt plutôt qu'à côté

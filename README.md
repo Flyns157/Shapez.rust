@@ -182,6 +182,16 @@ utilise la police par défaut de Bevy, sans accents. Ajoutez
 cargo xtask import-assets --music
 ```
 
+Ajoutez `--fonts` pour télécharger aussi les polices Noto (SIL Open Font License 1.1,
+environ 23 Mo, dans `assets/fonts-noto/`). La police du jeu ne couvre que l'alphabet
+latin : elles servent au chinois, au japonais, au coréen, au russe, à l'ukrainien et à
+l'hébreu. Le téléchargement passe par `curl`, présent sous Linux, macOS et Windows 10 et
+suivants ; les fichiers déjà présents ne sont pas retéléchargés.
+
+```sh
+cargo xtask import-assets --fonts
+```
+
 Avec un clone placé ailleurs, définissez `SHAPEZ_JS_ROOT` pour la commande :
 
 ```sh
@@ -284,7 +294,7 @@ Toutes sont facultatives.
 | `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
-| `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Sans elle, le jeu suit la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Pour l'instant, seules les 17 langues à alphabet latin sont prises en charge ; les autres (chinois, japonais, coréen, russe, ukrainien, hébreu) retombent sur l'anglais | langue du système, sinon anglais |
+| `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Sans elle, le jeu suit la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
 

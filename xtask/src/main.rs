@@ -1,7 +1,7 @@
 //! Tâches de développement du workspace.
 //!
 //! ```text
-//! cargo xtask import-assets [--music]
+//! cargo xtask import-assets [--music] [--fonts]
 //! ```
 
 use std::{
@@ -28,9 +28,12 @@ const EXTENSIONS: &[&str] = &["png", "wav", "mp3", "ogg", "ttf", "woff", "woff2"
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("import-assets") => import_assets(args.iter().any(|a| a == "--music")),
+        Some("import-assets") => import_assets(
+            args.iter().any(|a| a == "--music"),
+            args.iter().any(|a| a == "--fonts"),
+        ),
         _ => {
-            eprintln!("usage : cargo xtask import-assets [--music]");
+            eprintln!("usage : cargo xtask import-assets [--music] [--fonts]");
             return ExitCode::FAILURE;
         }
     };
@@ -70,7 +73,7 @@ fn original_repo(workspace: &Path) -> io::Result<PathBuf> {
     }
 }
 
-fn import_assets(with_music: bool) -> io::Result<()> {
+fn import_assets(with_music: bool, with_fonts: bool) -> io::Result<()> {
     let workspace = workspace_root();
     let repo = original_repo(&workspace)?;
     let assets = workspace.join("assets");
@@ -98,7 +101,86 @@ fn import_assets(with_music: bool) -> io::Result<()> {
         println!("{font}");
         manifest.push_str(&format!("{font}\n"));
     }
+    if with_fonts {
+        for line in download_fonts(&assets.join("fonts-noto"))? {
+            println!("{line}");
+            manifest.push_str(&format!("{line}\n"));
+        }
+    }
     fs::write(assets.join("IMPORTED.txt"), manifest)
+}
+
+/// Polices Noto (SIL Open Font License 1.1) des langues que la police du jeu ne couvre
+/// pas : (URL, fichier dans `assets/fonts-noto`, hors de `assets/fonts` que chaque import remplace).
+const NOTO_FONTS: &[(&str, &str)] = &[
+    (
+        "https://raw.githubusercontent.com/notofonts/notofonts.github.io/main/fonts/NotoSans/hinted/ttf/NotoSans-Regular.ttf",
+        "NotoSans-Regular.ttf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/notofonts.github.io/main/fonts/NotoSansHebrew/hinted/ttf/NotoSansHebrew-Regular.ttf",
+        "NotoSansHebrew-Regular.ttf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/notofonts.github.io/main/fonts/LICENSE",
+        "LICENSE-NotoSans.txt",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/SC/NotoSansSC-Regular.otf",
+        "NotoSansSC-Regular.otf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf",
+        "NotoSansTC-Regular.otf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/JP/NotoSansJP-Regular.otf",
+        "NotoSansJP-Regular.otf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
+        "NotoSansKR-Regular.otf",
+    ),
+    (
+        "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/LICENSE",
+        "LICENSE-NotoSansCJK.txt",
+    ),
+];
+
+/// Télécharge les polices Noto avec `curl` (fourni par Linux, macOS et Windows 10+).
+/// Un fichier déjà présent n'est pas retéléchargé.
+fn download_fonts(dir: &Path) -> io::Result<Vec<String>> {
+    fs::create_dir_all(dir)?;
+    let mut done = Vec::new();
+    for (url, file) in NOTO_FONTS {
+        let target = dir.join(file);
+        if target.exists() {
+            done.push(format!("{file} : déjà présent"));
+            continue;
+        }
+        let partial = dir.join(format!("{file}.part"));
+        let status = std::process::Command::new("curl")
+            .args([
+                "--fail",
+                "--location",
+                "--silent",
+                "--show-error",
+                "--output",
+            ])
+            .arg(&partial)
+            .arg(url)
+            .status()
+            .map_err(|e| io::Error::new(e.kind(), format!("curl introuvable : {e}")))?;
+        if !status.success() {
+            let _ = fs::remove_file(&partial);
+            return Err(io::Error::other(format!(
+                "téléchargement de {url} impossible ({status})"
+            )));
+        }
+        fs::rename(&partial, &target)?;
+        done.push(format!("{url} -> assets/fonts-noto/{file}"));
+    }
+    Ok(done)
 }
 
 /// Bevy ne lit pas le WOFF2 : chaque police `.woff2` est décompressée en `.ttf` à côté.
