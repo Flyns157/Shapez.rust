@@ -311,6 +311,7 @@ Toutes sont facultatives.
 | `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
+| `SHAPEZ_STRESS` | le jeu | Nombre de tuiles d'une usine de charge ajoutée aux nouvelles parties : des anneaux de convoyeurs chargés d'items, à droite du hub. Le temps d'image s'affiche alors dans les logs, pour profiler le rendu | désactivé |
 | `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
 | `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Elle passe avant la langue choisie dans les [paramètres](#paramètres), qui passe elle-même avant la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |

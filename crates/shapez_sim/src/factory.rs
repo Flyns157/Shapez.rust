@@ -1301,72 +1301,131 @@ impl Factory {
         belts + ejectors + processors + tunnels + miners + storages + filters
     }
 
-    /// Items visibles sur les convoyeurs et en sortie de bâtiment
+    /// Items visibles sur les convoyeurs et en sortie de bâtiment, dans toute l'usine
     /// (`BeltPath.draw` et `ItemEjectorSystem.drawChunk`).
     pub fn visible_items(&self, buildings: &Buildings) -> Vec<VisibleItem> {
         let mut out = Vec::new();
         for path in self.paths.values() {
-            for (progress, item) in path.items_with_progress() {
-                if let Some((x, y)) = position_on_path(path, progress, buildings) {
-                    out.push(VisibleItem { x, y, item });
-                }
-            }
+            push_path_items(path, buildings, None, &mut out);
         }
         for ejector in self.ejectors.values() {
-            for slot in &ejector.slots {
-                let Some(item) = slot.item else {
-                    continue;
-                };
-                let mut progress = slot.progress as f32 / TILE as f32;
-                if let EjectTarget::Belt(belt) = slot.target
-                    && let Some(path) = self.path_of(belt)
-                {
-                    let spacing = path.spacing_to_first() as f32 / TILE as f32;
-                    let max =
-                        (0.5 + spacing - crate::units::ITEM_SPACING as f32 / TILE as f32) * 2.0;
-                    progress = progress.min(max);
-                }
-                if progress < 0.05 {
-                    continue;
-                }
-                let (dx, dy) = slot.to.offset();
-                out.push(VisibleItem {
-                    x: slot.pos.x as f32 + 0.5 + dx as f32 * 0.5 * progress,
-                    y: slot.pos.y as f32 + 0.5 + dy as f32 * 0.5 * progress,
-                    item,
-                });
-            }
+            self.push_ejector_items(ejector, &mut out);
         }
         out
     }
+
+    /// Items des convoyeurs et bâtiments posés dans le rectangle `min..=max` : le rendu
+    /// ne dessine que l'écran, comme le JS qui dessine par chunk visible. Le coût suit
+    /// la surface du rectangle et les chemins qui le traversent, pas la taille de l'usine.
+    pub fn visible_items_in(
+        &self,
+        buildings: &Buildings,
+        min: TilePos,
+        max: TilePos,
+    ) -> Vec<VisibleItem> {
+        let mut paths = Vec::new();
+        let mut ejectors = Vec::new();
+        for y in min.y..=max.y {
+            for x in min.x..=max.x {
+                let Some(id) = buildings.at(TilePos::new(x, y)) else {
+                    continue;
+                };
+                if let Some(&p) = self.belt_path.get(id) {
+                    paths.push(p);
+                } else if self.ejectors.contains_key(id) {
+                    ejectors.push(id);
+                }
+            }
+        }
+        paths.sort_unstable();
+        paths.dedup();
+        ejectors.sort_unstable();
+        ejectors.dedup();
+        let mut out = Vec::new();
+        for p in paths {
+            push_path_items(&self.paths[p], buildings, Some((min, max)), &mut out);
+        }
+        for id in ejectors {
+            self.push_ejector_items(&self.ejectors[id], &mut out);
+        }
+        out
+    }
+
+    fn push_ejector_items(&self, ejector: &Ejector, out: &mut Vec<VisibleItem>) {
+        for slot in &ejector.slots {
+            let Some(item) = slot.item else {
+                continue;
+            };
+            let mut progress = slot.progress as f32 / TILE as f32;
+            if let EjectTarget::Belt(belt) = slot.target
+                && let Some(path) = self.path_of(belt)
+            {
+                let spacing = path.spacing_to_first() as f32 / TILE as f32;
+                let max = (0.5 + spacing - crate::units::ITEM_SPACING as f32 / TILE as f32) * 2.0;
+                progress = progress.min(max);
+            }
+            if progress < 0.05 {
+                continue;
+            }
+            let (dx, dy) = slot.to.offset();
+            out.push(VisibleItem {
+                x: slot.pos.x as f32 + 0.5 + dx as f32 * 0.5 * progress,
+                y: slot.pos.y as f32 + 0.5 + dy as f32 * 0.5 * progress,
+                item,
+            });
+        }
+    }
 }
 
-/// `computePositionFromProgress` + `transformBeltToLocalSpace`.
-fn position_on_path(path: &BeltPath, progress: u32, buildings: &Buildings) -> Option<(f32, f32)> {
+/// Items d'un chemin avec leur position (`computePositionFromProgress`), en un seul
+/// parcours : les items sont rangés du début vers la fin, le convoyeur courant ne fait
+/// qu'avancer. Avec `rect`, seuls les items dont le convoyeur y est posé sont gardés.
+fn push_path_items(
+    path: &BeltPath,
+    buildings: &Buildings,
+    rect: Option<(TilePos, TilePos)>,
+    out: &mut Vec<VisibleItem>,
+) {
     let belts = path.belts();
-    let mut current = 0;
-    for (i, entry) in belts.iter().enumerate() {
-        if current + entry.length >= progress || i + 1 == belts.len() {
-            let b = buildings.get(entry.id)?;
-            let local = ((progress - current.min(progress)) as f32 / TILE as f32).min(1.0);
-            let curve = CURVED_BELT_LENGTH as f32 / TILE as f32;
-            let (lx, ly) = match b.rotation_variant {
-                belt_variant::RIGHT => {
-                    let a = local / curve * std::f32::consts::FRAC_PI_2;
-                    (0.5 - 0.5 * a.cos(), 0.5 - 0.5 * a.sin())
-                }
-                belt_variant::LEFT => {
-                    let a = local / curve * std::f32::consts::FRAC_PI_2;
-                    (-0.5 + 0.5 * a.cos(), 0.5 - 0.5 * a.sin())
-                }
-                _ => (0.0, 0.5 - local),
-            };
-            let (rx, ry) = rotate(lx, ly, b.rotation);
-            return Some((b.origin.x as f32 + 0.5 + rx, b.origin.y as f32 + 0.5 + ry));
+    let mut index = 0;
+    let mut start = 0;
+    for (progress, item) in path.items_with_progress() {
+        // Premier convoyeur dont la fin atteint `progress`, ou le dernier.
+        while index + 1 < belts.len() && start + belts[index].length < progress {
+            start += belts[index].length;
+            index += 1;
         }
-        current += entry.length;
+        let Some(b) = buildings.get(belts[index].id) else {
+            continue;
+        };
+        if let Some((min, max)) = rect
+            && !((min.x..=max.x).contains(&b.origin.x) && (min.y..=max.y).contains(&b.origin.y))
+        {
+            continue;
+        }
+        let (x, y) = position_on_belt(b, progress - start.min(progress));
+        out.push(VisibleItem { x, y, item });
     }
-    None
+}
+
+/// Position d'un item à `offset` unités du début du convoyeur `b`
+/// (`transformBeltToLocalSpace`).
+fn position_on_belt(b: &Building, offset: u32) -> (f32, f32) {
+    let local = (offset as f32 / TILE as f32).min(1.0);
+    let curve = CURVED_BELT_LENGTH as f32 / TILE as f32;
+    let (lx, ly) = match b.rotation_variant {
+        belt_variant::RIGHT => {
+            let a = local / curve * std::f32::consts::FRAC_PI_2;
+            (0.5 - 0.5 * a.cos(), 0.5 - 0.5 * a.sin())
+        }
+        belt_variant::LEFT => {
+            let a = local / curve * std::f32::consts::FRAC_PI_2;
+            (-0.5 + 0.5 * a.cos(), 0.5 - 0.5 * a.sin())
+        }
+        _ => (0.0, 0.5 - local),
+    };
+    let (rx, ry) = rotate(lx, ly, b.rotation);
+    (b.origin.x as f32 + 0.5 + rx, b.origin.y as f32 + 0.5 + ry)
 }
 
 fn rotate(x: f32, y: f32, r: shapez_core::Rotation) -> (f32, f32) {
