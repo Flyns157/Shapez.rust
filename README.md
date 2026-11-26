@@ -18,6 +18,7 @@ complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
 - [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
 - [Variables d'environnement](#variables-denvironnement)
 - [Sauvegardes](#sauvegardes)
+- [Paramètres](#paramètres)
 - [Organisation du code](#organisation-du-code)
 - [Oracle JS](#oracle-js)
 - [Licence](#licence)
@@ -294,7 +295,8 @@ Toutes sont facultatives.
 | `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
-| `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Sans elle, le jeu suit la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
+| `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
+| `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Elle passe avant la langue choisie dans les [paramètres](#paramètres), qui passe elle-même avant la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
 
@@ -313,6 +315,23 @@ données de la plateforme, ou dans `SHAPEZ_SAVE_DIR` s'il est défini :
 | Linux | `~/.local/share/shapez-rs/saves` |
 | macOS | `~/Library/Application Support/shapez-rs/saves` |
 | Windows | `%APPDATA%\shapez-rs\data\saves` |
+
+## Paramètres
+
+Le bouton « Paramètres » du menu principal règle la langue, le volume des effets, celui
+de la musique et le plein écran. Les volumes et le plein écran s'appliquent tout de
+suite ; une nouvelle langue s'applique au prochain lancement. Les effets sonores viennent
+de `cargo xtask import-assets` ; la musique n'est jouée que si elle a été importée avec
+`--music`.
+
+Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
+de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :
+
+| Plateforme | Fichier |
+|---|---|
+| Linux | `~/.config/shapez-rs/settings.json` |
+| macOS | `~/Library/Application Support/shapez-rs/settings.json` |
+| Windows | `%APPDATA%\shapez-rs\config\settings.json` |
 
 ## Organisation du code
 

@@ -271,13 +271,18 @@ pub fn language_for_code(code: &str) -> Option<Language> {
         .or_else(|| find(&|c| c.split('-').next() == Some(short)))
 }
 
-/// Langue demandée : `SHAPEZ_LANG`, puis la langue du système (`LC_ALL`,
-/// `LC_MESSAGES`, `LANG`), puis l'anglais.
-pub fn detect_language() -> Language {
-    ["SHAPEZ_LANG", "LC_ALL", "LC_MESSAGES", "LANG"]
-        .iter()
-        .filter_map(|var| std::env::var(var).ok())
-        .find_map(|code| language_for_code(&code))
+/// Langue d'identifiant `id` (`fr`, `pt-BR`…).
+pub fn language_by_id(id: &str) -> Option<Language> {
+    LANGUAGES.iter().copied().find(|l| l.id == id)
+}
+
+/// Langue demandée : `SHAPEZ_LANG`, puis celle des paramètres (`preferred`), puis la
+/// langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`), puis l'anglais.
+pub fn detect_language(preferred: Option<&str>) -> Language {
+    let env = |var: &str| std::env::var(var).ok().and_then(|c| language_for_code(&c));
+    env("SHAPEZ_LANG")
+        .or_else(|| preferred.and_then(language_by_id))
+        .or_else(|| ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(env))
         .unwrap_or(LANGUAGES[0])
 }
 
@@ -440,12 +445,14 @@ pub fn format_big_number(n: u32) -> String {
 pub struct I18nPlugin {
     /// Dossier `assets/` (celui de l'`AssetPlugin`).
     pub asset_dir: String,
+    /// Langue choisie dans les paramètres.
+    pub preferred: Option<String>,
 }
 
 impl Plugin for I18nPlugin {
     fn build(&self, app: &mut App) {
         let dir = Path::new(&self.asset_dir);
-        let mut language = detect_language();
+        let mut language = detect_language(self.preferred.as_deref());
         // Police complémentaire de la langue, chargée directement : elle doit être prête
         // avant le premier texte.
         let extra = language.font.map(|file| dir.join("fonts-noto").join(file));

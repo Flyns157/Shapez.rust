@@ -15,6 +15,7 @@ use shapez_sim::{
 
 use crate::{
     AppState,
+    audio::{PlaySfx, Sfx},
     buildings_view::building_sprite,
     camera::{CameraSet, TILE_SIZE, tile_to_world},
     i18n::{t, tf},
@@ -218,6 +219,7 @@ fn selection_actions(
     mut sim: ResMut<Sim>,
     mut editor: ResMut<Editor>,
     mut placement: ResMut<PlacementState>,
+    mut sfx: MessageWriter<PlaySfx>,
 ) {
     // Les bâtiments supprimés entre-temps sortent de la sélection.
     let before = editor.selection.len();
@@ -268,6 +270,7 @@ fn selection_actions(
         return;
     }
     if copy || cut {
+        sfx.write(PlaySfx(Sfx::Copy));
         let bp = Blueprint::from_buildings(&sim, &editor.selection);
         editor.last_blueprint = bp.clone();
         editor.blueprint = bp;

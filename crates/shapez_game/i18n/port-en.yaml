@@ -55,6 +55,10 @@ port:
         code: "Code: <code>_"
         formats: 1 / 0, true / false, red, green, blue, yellow, purple, cyan, white, uncolored, or a shape (CuCuCuCu, Sr------:Cg------)
         invalid: Invalid code
+    settings:
+        systemLanguage: System language
+        on: On
+        off: Off
     gallery:
         title: Shape gallery (Esc = menu)
         cutLeft: cut left

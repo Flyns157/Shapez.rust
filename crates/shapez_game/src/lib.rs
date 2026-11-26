@@ -3,6 +3,7 @@
 
 use bevy::prelude::*;
 
+pub mod audio;
 pub mod buildings_view;
 pub mod camera;
 pub mod editing_ui;
@@ -16,6 +17,8 @@ pub mod menu;
 pub mod overlays;
 pub mod placement_ui;
 pub mod saves;
+pub mod settings;
+pub mod settings_ui;
 pub mod shape_textures;
 pub mod shop;
 pub mod signal_edit;
@@ -32,10 +35,25 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
+        // Les paramètres sont lus avant tout : la langue en dépend.
+        let settings_path = settings::Settings::default_path();
+        let settings = settings_path
+            .as_deref()
+            .map(settings::Settings::load)
+            .unwrap_or_default();
         app.add_plugins((
             i18n::I18nPlugin {
                 asset_dir: asset_dir(),
+                preferred: settings.language.clone(),
             },
+            settings::SettingsPlugin {
+                settings,
+                path: settings_path,
+            },
+            audio::AudioPlugin {
+                asset_dir: asset_dir(),
+            },
+            settings_ui::SettingsUiPlugin,
             state::AppStatePlugin,
             sim::SimPlugin,
             menu::MenuPlugin,

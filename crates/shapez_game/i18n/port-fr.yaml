@@ -53,6 +53,10 @@ port:
         code: "Code : <code>_"
         formats: 1 / 0, true / false, red, green, blue, yellow, purple, cyan, white, uncolored, ou une forme (CuCuCuCu, Sr------:Cg------)
         invalid: Code invalide
+    settings:
+        systemLanguage: Langue du système
+        on: Activé
+        off: Désactivé
     gallery:
         title: Galerie des formes (Échap = menu)
         cutLeft: découpe gauche
