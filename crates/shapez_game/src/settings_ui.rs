@@ -1,6 +1,6 @@
-//! Écran des paramètres (port partiel de `states/settings.js`) : langue, volumes et
-//! plein écran. Les volumes et le plein écran s'appliquent tout de suite, la langue au
-//! prochain lancement (`restartRequired`).
+//! Écran des paramètres (port partiel de `states/settings.js`) : langue, volumes,
+//! plein écran, thème, aide daltonien et accès aux contrôles. Tout s'applique tout de
+//! suite, sauf la langue, prise en compte au prochain lancement (`restartRequired`).
 
 use bevy::{
     prelude::*,
@@ -36,6 +36,7 @@ enum Action {
     Fullscreen,
     Theme(i32),
     ColorBlind,
+    Keybindings,
     Back,
 }
 
@@ -228,6 +229,7 @@ fn refresh(
                 settings.color_blind,
                 Action::ColorBlind,
             );
+            p.spawn(button(Action::Keybindings, t("keybindings.title"), 240.0));
             if restart {
                 p.spawn((
                     label(t("dialogs.restartRequired.text"), 16.0),
@@ -279,6 +281,7 @@ fn on_activate(
             settings.theme = themes[next_index];
         }
         Action::ColorBlind => settings.color_blind = !settings.color_blind,
+        Action::Keybindings => next.set(AppState::Keybindings),
         Action::Back => next.set(AppState::MainMenu),
     }
 }

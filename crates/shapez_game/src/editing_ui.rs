@@ -19,6 +19,7 @@ use crate::{
     buildings_view::building_sprite,
     camera::{CameraSet, TILE_SIZE, tile_to_world},
     i18n::{t, tf},
+    keybindings::{Action, just_pressed},
     placement_ui::PlacementState,
     shop::OpenPanel,
     sim::Sim,
@@ -55,7 +56,7 @@ impl Editor {
         !self.selection.is_empty() || self.blueprint.is_some() || self.select_start.is_some()
     }
 
-    fn say(&mut self, text: impl Into<String>) {
+    pub(crate) fn say(&mut self, text: impl Into<String>) {
         self.message = Some((
             text.into(),
             Timer::from_seconds(MESSAGE_SECONDS, TimerMode::Once),
@@ -252,7 +253,7 @@ fn selection_actions(
         return;
     }
     // `massSelectClear` : vide les items de la sélection, puis l'abandonne.
-    if !ctrl && keys.just_pressed(KeyCode::KeyB) {
+    if !ctrl && just_pressed(&keys, Action::MassSelectClear) {
         let selection = std::mem::take(&mut editor.selection);
         sim.clear_items(&selection);
         editor.say(tf(
@@ -262,7 +263,8 @@ fn selection_actions(
         editor.touch();
         return;
     }
-    let delete = !ctrl && keys.any_just_pressed([KeyCode::Delete, KeyCode::KeyX]);
+    let delete = !ctrl
+        && (just_pressed(&keys, Action::ConfirmMassDelete) || keys.just_pressed(KeyCode::KeyX));
     let copy = ctrl && letter(&letters, 'c');
     let cut = ctrl && letter(&letters, 'x');
     if (copy || cut) && !blueprints_unlocked(&sim) {
@@ -305,7 +307,7 @@ fn place_blueprint(
         editor.touch();
         return;
     }
-    if keys.just_pressed(KeyCode::KeyR) {
+    if just_pressed(&keys, Action::RotateWhilePlacing) {
         let ccw = shift(&keys);
         if let Some(bp) = editor.blueprint.as_mut() {
             if ccw {
