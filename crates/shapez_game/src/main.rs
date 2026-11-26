@@ -1,5 +1,8 @@
 //! Point d'entrée du jeu.
 
+// Pas de fenêtre de console sous Windows pour les builds de distribution.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use bevy::prelude::*;
 use shapez_game::{GamePlugin, asset_dir};
 

@@ -15,6 +15,7 @@ complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
   - [5. Lancer le jeu](#5-lancer-le-jeu)
     - [Raccourcis de construction](#raccourcis-de-construction)
   - [6. Lancer les tests](#6-lancer-les-tests)
+- [Distribuer le jeu](#distribuer-le-jeu)
 - [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
 - [Variables d'environnement](#variables-denvironnement)
 - [Sauvegardes](#sauvegardes)
@@ -245,6 +246,12 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 | Changer le signal d'un émetteur constant | clic dessus sur la couche câbles, puis choisir une valeur ou taper un code (`1`, `false`, `red`, `CuCuCuCu`…) et Entrée |
 | Lecteur, filtre, afficheur | U, O, P (couche normale ou câbles) |
 | Processeur virtuel, analyseur, comparateur | 5, 6, 7 sur la couche câbles (T : variante du processeur) |
+| Exporter la base en image | F3 |
+
+Ce sont les touches par défaut. Les touches simples (bâtiments, déplacement, pipette,
+rotation, variante, améliorations, statistiques, couche, repère, export, vider et supprimer
+la sélection) se changent dans **Paramètres → Contrôles**. Les raccourcis Ctrl, Échap,
+Espace, Tab, les flèches et X restent fixes.
 
 ### 6. Lancer les tests
 
@@ -259,7 +266,45 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-### 7. Mesurer les performances
+## Distribuer le jeu
+
+`cargo xtask dist` compile le jeu avec le profil `dist` (release sans symboles de
+débogage) et prépare un dossier prêt à archiver dans `target/packages/` :
+
+```text
+shapez-rs-0.1.0-x86_64-unknown-linux-gnu/
+├── shapez-rs          (shapez-rs.exe sous Windows)
+├── assets/            copie de assets/, sans la musique
+├── LICENSE
+├── NOTICE
+└── README.md
+```
+
+Le jeu cherche `assets/` à côté de son exécutable : le dossier peut être déplacé n'importe
+où. Les assets doivent avoir été importés avant (`cargo xtask import-assets --fonts`).
+Options :
+
+- `--target <triplet>` : compile pour une autre cible (par exemple
+  `x86_64-pc-windows-gnu`, voir la section suivante) ;
+- `--music` : copie aussi la musique, si elle a été importée. Elle est exclue par défaut,
+  car ses droits restent à vérifier avant une diffusion publique (voir `NOTICE`).
+
+Sous Linux, le binaire a besoin des bibliothèques ALSA et udev du système (`libasound2`,
+`libudev1`), présentes sur la plupart des distributions de bureau.
+
+Le workflow GitHub **Release** (`.github/workflows/release.yml`) fait la même chose pour
+Linux x86_64, Windows x86_64 et macOS (Apple Silicon et Intel) :
+
+- lancé à la main depuis l'onglet Actions (« Run workflow »), il produit les quatre
+  archives comme artefacts du run ;
+- sur un tag `v*` (`git tag v0.1.0 && git push origin v0.1.0`), il les joint en plus à
+  une release GitHub **en brouillon**, à relire puis publier depuis l'onglet Releases.
+
+La CI vérifie aussi que le jeu compile pour le web (`wasm32-unknown-unknown`). La version
+web jouable n'est pas encore là : les traductions, les polices, les paramètres et les
+sauvegardes sont lus avec `std::fs`, absent du navigateur.
+
+### Mesurer les performances
 
 ```sh
 cargo bench -p shapez_sim
@@ -290,13 +335,8 @@ Le binaire est dans `target/x86_64-pc-windows-gnu/release/shapez_game.exe`. Il n
 que de DLL fournies par Windows : aucune DLL MinGW n'est à copier avec lui.
 
 Pour le lancer sur un PC Windows, copiez à côté de lui le dossier `assets/` (rempli par
-`cargo xtask import-assets`), puis indiquez son emplacement avec `SHAPEZ_ASSETS`. C'est
-nécessaire car le chemin des assets compilé par défaut est celui de la machine Linux :
-
-```powershell
-$env:SHAPEZ_ASSETS = "$PWD\assets"
-.\shapez_game.exe
-```
+`cargo xtask import-assets`) : le jeu le trouve tout seul. Le plus simple est
+`cargo xtask dist --target x86_64-pc-windows-gnu`, qui prépare ce dossier.
 
 N'utilisez pas `--features dev` pour une compilation croisée : le binaire dépendrait de
 DLL qui ne sont pas distribuées avec lui.
@@ -308,11 +348,12 @@ Toutes sont facultatives.
 | Variable | Utilisée par | Effet | Valeur par défaut |
 |---|---|---|---|
 | `SHAPEZ_JS_ROOT` | `cargo xtask import-assets`, oracle JS | Chemin du clone du code source de shapez.io | `../shapez.io` |
-| `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
+| `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à côté de l'exécutable s'il existe, sinon à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
 | `SHAPEZ_STRESS` | le jeu | Nombre de tuiles d'une usine de charge ajoutée aux nouvelles parties : des anneaux de convoyeurs chargés d'items, à droite du hub. Le temps d'image s'affiche alors dans les logs, pour profiler le rendu | désactivé |
 | `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
+| `SHAPEZ_SCREENSHOT_DIR` | le jeu | Dossier des exports de la base (F3) | voir [Paramètres](#paramètres) |
 | `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Elle passe avant la langue choisie dans les [paramètres](#paramètres), qui passe elle-même avant la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
@@ -336,10 +377,27 @@ données de la plateforme, ou dans `SHAPEZ_SAVE_DIR` s'il est défini :
 ## Paramètres
 
 Le bouton « Paramètres » du menu principal règle la langue, le volume des effets, celui
-de la musique et le plein écran. Les volumes et le plein écran s'appliquent tout de
-suite ; une nouvelle langue s'applique au prochain lancement. Les effets sonores viennent
-de `cargo xtask import-assets` ; la musique n'est jouée que si elle a été importée avec
-`--music`.
+de la musique, le plein écran, le thème (sombre ou clair) et l'aide daltonien. Tout
+s'applique tout de suite, sauf la langue, qui s'applique au prochain lancement. Les
+effets sonores viennent de `cargo xtask import-assets` ; la musique n'est jouée que si
+elle a été importée avec `--music`.
+
+Le thème change les couleurs de la carte en partie (fond, grille, gisements) et du texte
+posé dessus ; les menus restent sombres. L'aide daltonien affiche le nom de la couleur
+sous le curseur (item d'un convoyeur, item en sortie d'un bâtiment, ou gisement) et
+entoure la tuile, comme dans le jeu d'origine.
+
+En partie, **F3** exporte toute la base en PNG, comme le jeu d'origine : l'image couvre
+tous les bâtiments (128 pixels par chunk, moins pour une très grande base). Elle est écrite
+dans le dossier `screenshots` du dossier de données (à côté des sauvegardes), ou dans
+celui indiqué par `SHAPEZ_SCREENSHOT_DIR`.
+
+L'écran **Contrôles** liste les touches par catégorie, comme le jeu d'origine : « Changer »
+attend la nouvelle touche (Échap annule), « Réinitialiser » revient à la touche par défaut.
+Les touches sont physiques : celle à la place du W d'un clavier QWERTY reste « aller en
+haut » sur un AZERTY. Leur libellé suit l'agencement du clavier dès qu'elles ont été
+tapées une fois ; avant, c'est le nom QWERTY. Seules les touches changées sont
+enregistrées, sous `keybindings`.
 
 Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
 de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :

@@ -1,9 +1,8 @@
-//! Repères (M pour en poser un, clic pour y aller, Maj+clic pour le retirer) et formes
+//! Repères (M par défaut pour en poser un, clic pour y aller, Maj+clic pour le retirer) et formes
 //! épinglées (objectif courant, formes de plan, formes choisies dans le shop) :
 //! `hud/parts/waypoints.js` et `hud/parts/pinned_shapes.js`, simplifiés.
 
 use bevy::{
-    input::keyboard::Key,
     prelude::*,
     ui_widgets::{Activate, ActivateOnPress, Button},
 };
@@ -16,11 +15,12 @@ use shapez_sim::{
 
 use crate::{
     AppState,
-    camera::{Zoom, tile_to_world, world_to_tile},
-    editing_ui::letter,
+    camera::{MainCamera, Zoom, tile_to_world, world_to_tile},
     i18n::t,
+    keybindings::{Action, just_pressed, tk},
     shape_textures::ShapeTextures,
     sim::Sim,
+    theme::ThemedText,
 };
 
 #[derive(Debug, Default)]
@@ -71,13 +71,12 @@ fn spawn_panel(mut commands: Commands) {
 
 fn add_waypoint(
     keys: Res<ButtonInput<KeyCode>>,
-    letters: Res<ButtonInput<Key>>,
     zoom: Res<Zoom>,
-    camera: Single<&Transform, With<Camera2d>>,
+    camera: Single<&Transform, With<MainCamera>>,
     mut sim: ResMut<Sim>,
 ) {
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
-    if ctrl || !letter(&letters, 'm') {
+    if ctrl || !just_pressed(&keys, Action::CreateMarker) {
         return;
     }
     let center = world_to_tile(camera.translation.truncate());
@@ -97,7 +96,7 @@ fn on_activate(
     keys: Res<ButtonInput<KeyCode>>,
     sim: Option<ResMut<Sim>>,
     mut zoom: ResMut<Zoom>,
-    mut camera: Query<&mut Transform, With<Camera2d>>,
+    mut camera: Query<&mut Transform, With<MainCamera>>,
 ) {
     let Some(mut sim) = sim else {
         return;
@@ -225,10 +224,11 @@ fn update_panel(
                 format!(
                     "{} {}",
                     t("ingame.waypoints.waypoints"),
-                    t("port.marks.help")
+                    tk("port.marks.help")
                 ),
                 14.0,
-            ));
+            ))
+            .insert(ThemedText);
             let mut entries = vec![(None, t("ingame.waypoints.hub"))];
             entries.extend(waypoints.into_iter().enumerate().map(|(i, l)| (Some(i), l)));
             for (index, text) in entries {
@@ -246,6 +246,7 @@ fn update_panel(
             }
             p.spawn((
                 label(t("port.marks.pinned"), 14.0),
+                ThemedText,
                 Node {
                     margin: UiRect::top(px(10)),
                     ..default()
@@ -259,7 +260,7 @@ fn update_panel(
                         ..default()
                     },
                     children![
-                        label(text, 16.0),
+                        (label(text, 16.0), ThemedText),
                         (
                             ImageNode::new(handle),
                             Node {

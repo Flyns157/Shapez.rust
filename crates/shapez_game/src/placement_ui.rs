@@ -14,67 +14,71 @@ use shapez_sim::{
 use crate::{
     AppState,
     buildings_view::building_sprite,
-    camera::{CameraSet, world_to_tile},
+    camera::{CameraSet, MainCamera, world_to_tile},
     editing_ui::{EditingSet, Editor},
-    i18n::{building_name, t, tf},
+    i18n::{building_name, t},
+    keybindings::{self, Action, just_pressed, tk, tk_with},
     shop::OpenPanel,
     sim::Sim,
+    theme::ThemedText,
     wires_ui::{ActiveLayer, WiresUiSet},
 };
 
-/// Entrée de barre d'outils : touche, libellé de la touche, bâtiment.
-pub type ToolbarEntry = (KeyCode, &'static str, BuildingKind);
-
-/// Barre de la couche normale (`HUDBuildingsToolbar`, touches du JS).
-pub const REGULAR_TOOLBAR: [ToolbarEntry; 15] = [
-    (KeyCode::Digit1, "1", BuildingKind::Belt),
-    (KeyCode::Digit2, "2", BuildingKind::Balancer),
-    (KeyCode::Digit3, "3", BuildingKind::UndergroundBelt),
-    (KeyCode::Digit4, "4", BuildingKind::Miner),
-    (KeyCode::Digit5, "5", BuildingKind::Cutter),
-    (KeyCode::Digit6, "6", BuildingKind::Rotater),
-    (KeyCode::Digit7, "7", BuildingKind::Stacker),
-    (KeyCode::Digit8, "8", BuildingKind::Mixer),
-    (KeyCode::Digit9, "9", BuildingKind::Painter),
-    (KeyCode::Digit0, "0", BuildingKind::Trash),
-    (KeyCode::KeyY, "Y", BuildingKind::Storage),
-    (KeyCode::KeyU, "U", BuildingKind::Reader),
-    (KeyCode::KeyI, "I", BuildingKind::Lever),
-    (KeyCode::KeyO, "O", BuildingKind::Filter),
-    (KeyCode::KeyP, "P", BuildingKind::Display),
-];
+/// Barre de la couche normale (`HUDBuildingsToolbar`), dans l'ordre du JS.
+pub const REGULAR_TOOLBAR: [BuildingKind; 15] = {
+    use BuildingKind as K;
+    [
+        K::Belt,
+        K::Balancer,
+        K::UndergroundBelt,
+        K::Miner,
+        K::Cutter,
+        K::Rotater,
+        K::Stacker,
+        K::Mixer,
+        K::Painter,
+        K::Trash,
+        K::Storage,
+        K::Reader,
+        K::Lever,
+        K::Filter,
+        K::Display,
+    ]
+};
 
 /// Barre de la couche wires (`HUDWiresToolbar`).
-pub const WIRES_TOOLBAR: [ToolbarEntry; 13] = [
-    (KeyCode::Digit1, "1", BuildingKind::Wire),
-    (KeyCode::Digit2, "2", BuildingKind::WireTunnel),
-    (KeyCode::Digit3, "3", BuildingKind::ConstantSignal),
-    (KeyCode::Digit4, "4", BuildingKind::LogicGate),
-    (KeyCode::Digit5, "5", BuildingKind::VirtualProcessor),
-    (KeyCode::Digit6, "6", BuildingKind::Analyzer),
-    (KeyCode::Digit7, "7", BuildingKind::Comparator),
-    (KeyCode::Digit8, "8", BuildingKind::Transistor),
-    (KeyCode::KeyY, "Y", BuildingKind::Storage),
-    (KeyCode::KeyU, "U", BuildingKind::Reader),
-    (KeyCode::KeyI, "I", BuildingKind::Lever),
-    (KeyCode::KeyO, "O", BuildingKind::Filter),
-    (KeyCode::KeyP, "P", BuildingKind::Display),
-];
+pub const WIRES_TOOLBAR: [BuildingKind; 13] = {
+    use BuildingKind as K;
+    [
+        K::Wire,
+        K::WireTunnel,
+        K::ConstantSignal,
+        K::LogicGate,
+        K::VirtualProcessor,
+        K::Analyzer,
+        K::Comparator,
+        K::Transistor,
+        K::Storage,
+        K::Reader,
+        K::Lever,
+        K::Filter,
+        K::Display,
+    ]
+};
 
 /// Barre d'outils de la couche.
-pub fn toolbar(layer: Layer) -> &'static [ToolbarEntry] {
+pub fn toolbar(layer: Layer) -> &'static [BuildingKind] {
     match layer {
         Layer::Regular => &REGULAR_TOOLBAR,
         Layer::Wires => &WIRES_TOOLBAR,
     }
 }
 
-/// Touche d'un bâtiment, sur la barre de sa couche.
-pub fn toolbar_key(kind: BuildingKind) -> Option<&'static str> {
+/// Libellé de la touche d'un bâtiment, s'il est sur la barre de sa couche.
+pub fn toolbar_key(kind: BuildingKind) -> Option<String> {
     toolbar(kind.layer())
-        .iter()
-        .find(|(_, _, k)| *k == kind)
-        .map(|&(_, key, _)| key)
+        .contains(&kind)
+        .then(|| keybindings::label(Action::Building(kind)))
 }
 
 /// Systèmes de pose, après les interactions de la couche wires.
@@ -163,7 +167,7 @@ impl Plugin for PlacementUiPlugin {
 fn track_cursor(
     mut state: ResMut<PlacementState>,
     window: Single<&Window>,
-    camera: Single<(&Camera, &GlobalTransform), With<Camera2d>>,
+    camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
     let (camera, global) = *camera;
     state.cursor_tile = window
@@ -181,8 +185,8 @@ fn selection_keys(
     layer: Res<ActiveLayer>,
     mut state: ResMut<PlacementState>,
 ) {
-    for &(key, _, kind) in toolbar(layer.0) {
-        if keys.just_pressed(key) && is_unlocked(kind, &sim.hub) {
+    for &kind in toolbar(layer.0) {
+        if just_pressed(&keys, Action::Building(kind)) && is_unlocked(kind, &sim.hub) {
             // Retaper la même touche désélectionne, comme dans le JS.
             if state.selected == Some(kind) {
                 state.selected = None;
@@ -193,20 +197,20 @@ fn selection_keys(
         }
     }
     let shift = keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
-    if keys.just_pressed(KeyCode::KeyR) {
+    if just_pressed(&keys, Action::RotateWhilePlacing) {
         state.rotation = if shift {
             state.rotation.rotate_ccw()
         } else {
             state.rotation.rotate_cw()
         };
     }
-    if keys.just_pressed(KeyCode::KeyT)
+    if just_pressed(&keys, Action::CycleBuildingVariants)
         && let Some(kind) = state.selected
     {
         state.variant_index = (state.variant_index + 1) % available_variants(kind, &sim.hub).len();
     }
     // Pipette : reprend le bâtiment sous le curseur.
-    if keys.just_pressed(KeyCode::KeyQ) {
+    if just_pressed(&keys, Action::Pipette) {
         let picked = state
             .cursor_tile
             .and_then(|t| sim.buildings.building_at_layer(t, layer.0))
@@ -363,6 +367,7 @@ fn spawn_toolbar(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::InGame),
         ToolbarText,
+        ThemedText,
         Text::new(""),
         TextFont {
             font_size: FontSize::Px(14.0),
@@ -389,7 +394,8 @@ fn update_toolbar(
         s.push_str(&t("port.hud.wiresLayer"));
         s.push_str("  ");
     }
-    for (_, key, kind) in toolbar(layer.0) {
+    for kind in toolbar(layer.0) {
+        let key = keybindings::label(Action::Building(*kind));
         let name = building_name(*kind, Variant::Default);
         // Comme dans le JS, les bâtiments verrouillés n'apparaissent pas.
         if !is_unlocked(*kind, &sim.hub) {
@@ -406,7 +412,7 @@ fn update_toolbar(
             .hub
             .stored_by_key(shapez_sim::editing::BLUEPRINT_SHAPE, &sim.registry);
         s.push('\n');
-        s.push_str(&tf(
+        s.push_str(&tk_with(
             "port.hud.blueprint",
             &[
                 ("count", &bp.len().to_string()),
@@ -416,14 +422,14 @@ fn update_toolbar(
         ));
     } else if !editor.selection.is_empty() {
         s.push('\n');
-        s.push_str(&tf(
+        s.push_str(&tk_with(
             "port.hud.selection",
             &[("count", &editor.selection.len().to_string())],
         ));
     } else if let Some(kind) = state.selected {
         let variant = current_variant(kind, state.variant_index, &sim);
         s.push('\n');
-        s.push_str(&tf(
+        s.push_str(&tk_with(
             "port.hud.placing",
             &[
                 ("variant", &building_name(kind, variant)),
@@ -432,15 +438,15 @@ fn update_toolbar(
         ));
     } else if layer.0 == Layer::Wires {
         s.push('\n');
-        s.push_str(&t("port.hud.wiresHelp"));
+        s.push_str(&tk("port.hud.wiresHelp"));
     } else {
         s.push('\n');
-        s.push_str(&t("port.hud.help"));
+        s.push_str(&tk("port.hud.help"));
         if sim
             .hub
             .is_reward_unlocked(shapez_sim::hub_goals::Reward::WiresPainterAndLevers)
         {
-            s.push_str(&t("port.hud.helpWires"));
+            s.push_str(&tk("port.hud.helpWires"));
         }
     }
     if let Some((message, _)) = &editor.message {

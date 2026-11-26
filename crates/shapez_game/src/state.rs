@@ -14,6 +14,8 @@ pub enum AppState {
     ShapeGallery,
     /// Écran des paramètres, ouvert depuis le menu principal.
     Settings,
+    /// Écran des contrôles, ouvert depuis les paramètres.
+    Keybindings,
 }
 
 #[derive(Debug, Default)]

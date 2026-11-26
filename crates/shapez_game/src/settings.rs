@@ -2,13 +2,18 @@
 //! langue, volumes des effets et de la musique, plein écran. Ils sont enregistrés en
 //! JSON à chaque changement.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use bevy::{
     prelude::*,
     window::{MonitorSelection, PrimaryWindow, WindowMode},
 };
 use serde::{Deserialize, Serialize};
+
+use crate::theme::ThemeId;
 
 /// Pas des boutons de volume.
 pub const VOLUME_STEP: f32 = 0.1;
@@ -25,6 +30,12 @@ pub struct Settings {
     /// Volume de la musique, de 0 à 1.
     pub music_volume: f32,
     pub fullscreen: bool,
+    pub theme: ThemeId,
+    /// `enableColorBlindHelper`.
+    pub color_blind: bool,
+    /// `keybindingOverrides` : identifiant JS de l'action → touche (`KeyW`…). Seules
+    /// les touches changées y figurent.
+    pub keybindings: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -36,6 +47,9 @@ impl Default for Settings {
             sound_volume: 1.0,
             music_volume: 1.0,
             fullscreen: false,
+            theme: ThemeId::Dark,
+            color_blind: false,
+            keybindings: BTreeMap::new(),
         }
     }
 }
@@ -146,6 +160,9 @@ mod tests {
             sound_volume: 0.3,
             music_volume: 0.0,
             fullscreen: true,
+            theme: ThemeId::Light,
+            color_blind: true,
+            keybindings: BTreeMap::from([("pipette".into(), "KeyH".into())]),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path), settings);

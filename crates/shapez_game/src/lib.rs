@@ -6,10 +6,13 @@ use bevy::prelude::*;
 pub mod audio;
 pub mod buildings_view;
 pub mod camera;
+pub mod color_blind;
 pub mod editing_ui;
 pub mod gallery;
 pub mod i18n;
 pub mod items_view;
+pub mod keybindings;
+pub mod keybindings_ui;
 pub mod main_menu;
 pub mod map_render;
 pub mod marks_ui;
@@ -17,6 +20,7 @@ pub mod menu;
 pub mod overlays;
 pub mod placement_ui;
 pub mod saves;
+pub mod screenshot;
 pub mod settings;
 pub mod settings_ui;
 pub mod shape_textures;
@@ -24,6 +28,7 @@ pub mod shop;
 pub mod signal_edit;
 pub mod sim;
 pub mod state;
+pub mod theme;
 pub mod underlays;
 pub mod wires_ui;
 
@@ -54,6 +59,8 @@ impl Plugin for GamePlugin {
                 asset_dir: asset_dir(),
             },
             settings_ui::SettingsUiPlugin,
+            theme::ThemePlugin,
+            color_blind::ColorBlindPlugin,
             state::AppStatePlugin,
             sim::SimPlugin,
             menu::MenuPlugin,
@@ -76,6 +83,11 @@ impl Plugin for GamePlugin {
             underlays::UnderlaysPlugin,
             signal_edit::SignalEditPlugin,
         ))
+        .add_plugins((
+            screenshot::ScreenshotPlugin,
+            keybindings::KeybindingsPlugin,
+            keybindings_ui::KeybindingsUiPlugin,
+        ))
         .add_systems(Startup, spawn_camera);
         // Profilage avec une usine de charge : temps d'image dans les logs.
         if std::env::var_os("SHAPEZ_STRESS").is_some() {
@@ -87,13 +99,24 @@ impl Plugin for GamePlugin {
     }
 }
 
-/// Dossier `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
-/// `SHAPEZ_ASSETS` permet de le déplacer, par exemple pour un binaire distribué.
+/// Dossier des assets, dans cet ordre :
+/// - `SHAPEZ_ASSETS`, s'il est défini ;
+/// - `assets/` à côté de l'exécutable, comme dans les archives de `cargo xtask dist` ;
+/// - `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
 pub fn asset_dir() -> String {
-    std::env::var("SHAPEZ_ASSETS")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets").to_string())
+    if let Ok(dir) = std::env::var("SHAPEZ_ASSETS") {
+        return dir;
+    }
+    let beside_exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("assets")))
+        .filter(|dir| dir.join("sprites").is_dir());
+    match beside_exe {
+        Some(dir) => dir.to_string_lossy().into_owned(),
+        None => concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets").to_string(),
+    }
 }
 
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((Camera2d, camera::MainCamera, IsDefaultUiCamera));
 }

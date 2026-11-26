@@ -12,10 +12,12 @@ use shapez_sim::{
 use crate::{
     AppState,
     i18n::{building_name, reward_name, tf, upgrade_name},
+    keybindings::tk_with,
     placement_ui::{PlacementState, toolbar_key},
     shape_textures::ShapeTextures,
     shop::{OpenPanel, roman},
     sim::{GameSpeed, Sim, SimEventMsg, SimEventsSet},
+    theme::ThemedText,
 };
 
 /// Durée d'affichage d'un message de fin de niveau, en secondes.
@@ -68,7 +70,7 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         },
         children![
-            (TickText, Text::new("")),
+            (TickText, ThemedText, Text::new("")),
             (
                 Node {
                     align_items: AlignItems::Center,
@@ -87,6 +89,7 @@ fn spawn_hud(mut commands: Commands) {
                     ),
                     (
                         GoalText,
+                        ThemedText,
                         Text::new(""),
                         TextFont {
                             font_size: FontSize::Px(24.0),
@@ -118,7 +121,7 @@ fn update_hud(
     mut goal: Single<&mut Text, (With<GoalText>, Without<TickText>)>,
     mut icon: Single<&mut ImageNode, With<GoalIcon>>,
 ) {
-    let status = tf(
+    let status = tk_with(
         "port.hud.status",
         &[
             ("tick", &sim.tick_count().to_string()),
@@ -191,7 +194,7 @@ fn unlocked_buildings(reward: Reward) -> Vec<String> {
                 "port.notify.buildingKey"
             };
             let name = building_name(kind, Variant::Default);
-            Some(tf(template, &[("name", &name), ("key", key)]))
+            Some(tk_with(template, &[("name", &name), ("key", &key)]))
         })
         .collect()
 }
