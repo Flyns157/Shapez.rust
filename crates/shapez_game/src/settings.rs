@@ -49,8 +49,12 @@ impl Default for Settings {
 
 impl Settings {
     /// Fichier des paramètres : `SHAPEZ_SETTINGS`, sinon le dossier de configuration
-    /// de la plateforme (`~/.config/shapez-rs/settings.json` sous Linux).
+    /// de la plateforme (`~/.config/shapez-rs/settings.json` sous Linux), ou
+    /// `settings.json` dans le `localStorage` du navigateur.
     pub fn default_path() -> Option<PathBuf> {
+        if cfg!(target_arch = "wasm32") {
+            return Some(PathBuf::from("settings.json"));
+        }
         if let Some(path) = std::env::var_os("SHAPEZ_SETTINGS") {
             return Some(PathBuf::from(path));
         }
@@ -60,8 +64,8 @@ impl Settings {
 
     /// Lit `path` ; un fichier absent ou illisible donne les valeurs par défaut.
     pub fn load(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(text) => serde_json::from_str::<Self>(&text)
+        match shapez_save::disk::read(path) {
+            Ok(bytes) => serde_json::from_slice::<Self>(&bytes)
                 .map(Self::clamped)
                 .unwrap_or_else(|e| {
                     warn!("paramètres illisibles ({}) : {e}", path.display());
@@ -72,11 +76,8 @@ impl Settings {
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
         let text = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
-        std::fs::write(path, text)
+        shapez_save::disk::write_atomic(path, text.as_bytes())
     }
 
     fn clamped(mut self) -> Self {

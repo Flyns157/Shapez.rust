@@ -124,8 +124,8 @@ impl Translations {
         let english = LANGUAGES[0];
         for lang in [english, language] {
             let path = dir.join(format!("base-{}.yaml", lang.file));
-            match std::fs::read_to_string(&path) {
-                Ok(text) => out.merge_yaml(&text),
+            match crate::files::read_asset(&path) {
+                Ok(bytes) => out.merge_yaml(&String::from_utf8_lossy(&bytes)),
                 Err(e) => warn!("traductions introuvables ({}) : {e}", path.display()),
             }
             if let Some((_, text)) = PORT_FILES.iter().find(|(id, _)| *id == lang.id) {
@@ -283,7 +283,39 @@ pub fn detect_language(preferred: Option<&str>) -> Language {
     env("SHAPEZ_LANG")
         .or_else(|| preferred.and_then(language_by_id))
         .or_else(|| ["LC_ALL", "LC_MESSAGES", "LANG"].into_iter().find_map(env))
+        .or_else(browser_language)
         .unwrap_or(LANGUAGES[0])
+}
+
+/// Langue du navigateur (`navigator.language`, par exemple `fr-FR`) dans la version web.
+fn browser_language() -> Option<Language> {
+    #[cfg(target_arch = "wasm32")]
+    {
+        web_sys::window()
+            .and_then(|w| w.navigator().language())
+            .and_then(|code| language_for_code(&code))
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        None
+    }
+}
+
+/// Fichiers que [`I18nPlugin`] lit au démarrage pour la langue `preferred` : la version
+/// web les télécharge avant de lancer le jeu (voir [`crate::files`]).
+pub fn startup_files(asset_dir: &Path, preferred: Option<&str>) -> Vec<std::path::PathBuf> {
+    let language = detect_language(preferred);
+    let mut files = vec![asset_dir.join("fonts/GameFont.ttf")];
+    for lang in [LANGUAGES[0], language] {
+        let path = asset_dir.join(format!("i18n/base-{}.yaml", lang.file));
+        if !files.contains(&path) {
+            files.push(path);
+        }
+    }
+    if let Some(font) = language.font {
+        files.push(asset_dir.join("fonts-noto").join(font));
+    }
+    files
 }
 
 /// Polices utilisées pour tous les textes : celle du jeu, puis la police Noto de la
@@ -456,7 +488,7 @@ impl Plugin for I18nPlugin {
         // Police complémentaire de la langue, chargée directement : elle doit être prête
         // avant le premier texte.
         let extra = language.font.map(|file| dir.join("fonts-noto").join(file));
-        let extra = match extra.map(|path| (std::fs::read(&path), path)) {
+        let extra = match extra.map(|path| (crate::files::read_asset(&path), path)) {
             Some((Ok(bytes), _)) => Some(bytes),
             Some((Err(e), path)) => {
                 warn!(
@@ -474,7 +506,7 @@ impl Plugin for I18nPlugin {
 
         // Police du jeu (Barlow), convertie en TTF par `cargo xtask import-assets`.
         let font = dir.join("fonts/GameFont.ttf");
-        match std::fs::read(&font) {
+        match crate::files::read_asset(&font) {
             Ok(bytes) => {
                 if let Some(mut fonts) = app.world_mut().get_resource_mut::<Assets<Font>>() {
                     let _ = fonts.insert(AssetId::default(), Font::from_bytes(bytes));

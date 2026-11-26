@@ -16,6 +16,7 @@
 //! Le CRC détecte les fichiers tronqués ou corrompus : le chargeur renvoie alors une
 //! erreur au lieu de paniquer.
 
+pub mod disk;
 pub mod migrations;
 pub mod storage;
 
@@ -53,8 +54,8 @@ impl SaveMeta {
             seed: world.map.seed(),
             level: world.hub.level,
             ticks: world.tick_count(),
-            saved_at: std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
+            saved_at: web_time::SystemTime::now()
+                .duration_since(web_time::UNIX_EPOCH)
                 .map_or(0, |d| d.as_secs()),
         }
     }

@@ -3,6 +3,7 @@
 //! ```text
 //! cargo xtask import-assets [--music] [--fonts]
 //! cargo xtask dist [--target <triplet>] [--music]
+//! cargo xtask web [--music]
 //! ```
 
 use std::{
@@ -39,10 +40,12 @@ fn main() -> ExitCode {
                 .map(|w| w[1].as_str()),
             args.iter().any(|a| a == "--music"),
         ),
+        Some("web") => web(args.iter().any(|a| a == "--music")),
         _ => {
             eprintln!(
                 "usage : cargo xtask import-assets [--music] [--fonts]\n        \
-                 cargo xtask dist [--target <triplet>] [--music]"
+                 cargo xtask dist [--target <triplet>] [--music]\n        \
+                 cargo xtask web [--music]"
             );
             return ExitCode::FAILURE;
         }
@@ -248,77 +251,142 @@ const DIST_NAME: &str = "shapez-rs";
 /// Le dossier est ensuite archivé par la CI (`.github/workflows/release.yml`).
 fn dist(target: Option<&str>, with_music: bool) -> io::Result<()> {
     let workspace = workspace_root();
-    let assets = workspace.join("assets");
-    if !assets.join("sprites").is_dir() || !assets.join("i18n").is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "assets absents : lancez d'abord `cargo xtask import-assets --fonts`",
-        ));
-    }
+    check_assets(&workspace)?;
     let triple = match target {
         Some(t) => t.to_string(),
         None => host_triple()?,
     };
-
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let mut build = std::process::Command::new(cargo);
-    build
-        .current_dir(&workspace)
-        .args(["build", "--profile", "dist", "-p", "shapez_game"]);
-    if let Some(t) = target {
-        build.args(["--target", t]);
-    }
-    let status = build.status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "échec de la compilation ({status})"
-        )));
-    }
+    build_game(&workspace, "dist", target)?;
 
     let release = match target {
         Some(t) => workspace.join("target").join(t).join("dist"),
         None => workspace.join("target/dist"),
     };
-    let exe = if triple.contains("windows") {
-        "shapez_game.exe"
+    let (exe, exe_out) = if triple.contains("windows") {
+        ("shapez_game.exe", format!("{DIST_NAME}.exe"))
     } else {
-        "shapez_game"
+        ("shapez_game", DIST_NAME.to_string())
     };
-    let out = workspace.join("target/packages").join(format!(
-        "{DIST_NAME}-{}-{triple}",
-        env!("CARGO_PKG_VERSION")
-    ));
-    if out.exists() {
-        fs::remove_dir_all(&out)?;
-    }
-    fs::create_dir_all(&out)?;
-    let exe_out = if triple.contains("windows") {
-        format!("{DIST_NAME}.exe")
-    } else {
-        DIST_NAME.to_string()
-    };
+    let (out, count) = package_dir(&workspace, &triple, with_music)?;
     fs::copy(release.join(exe), out.join(&exe_out))?;
-    for file in ["LICENSE", "NOTICE", "README.md"] {
-        fs::copy(workspace.join(file), out.join(file))?;
-    }
-    let mut count = 0;
-    for entry in fs::read_dir(&assets)? {
-        let entry = entry?;
-        let target = out.join("assets").join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            count += copy_dist_tree(&entry.path(), &target, with_music)?;
-        } else {
-            fs::create_dir_all(out.join("assets"))?;
-            fs::copy(entry.path(), target)?;
-            count += 1;
-        }
-    }
     println!(
         "{} : {exe_out} et {count} fichiers d'assets{}",
         out.display(),
         if with_music { "" } else { " (sans la musique)" }
     );
     Ok(())
+}
+
+/// Version web : compile pour `wasm32-unknown-unknown` avec le profil `dist`, génère le
+/// JavaScript avec `wasm-bindgen` (à installer dans la version du `Cargo.lock`), et
+/// prépare `target/packages/<nom>-<version>-web/` avec `web/index.html` et `assets/`.
+/// Le dossier se sert tel quel par n'importe quel serveur HTTP statique.
+fn web(with_music: bool) -> io::Result<()> {
+    let workspace = workspace_root();
+    check_assets(&workspace)?;
+    let target = "wasm32-unknown-unknown";
+    // Profil `dist` : wasm-bindgen avertit que `strip` retire la section
+    // `target_features`, mais le résultat fonctionne et pèse 51 Mo au lieu de 82.
+    build_game(&workspace, "dist", Some(target))?;
+
+    let (out, count) = package_dir(&workspace, "web", with_music)?;
+    let wasm = workspace
+        .join("target")
+        .join(target)
+        .join("dist/shapez_game.wasm");
+    let status = std::process::Command::new("wasm-bindgen")
+        .args([
+            "--target",
+            "web",
+            "--no-typescript",
+            "--out-name",
+            "shapez",
+            "--out-dir",
+        ])
+        .arg(&out)
+        .arg(&wasm)
+        .status()
+        .map_err(|e| {
+            io::Error::new(
+                e.kind(),
+                format!(
+                    "wasm-bindgen introuvable ({e}) : `cargo install wasm-bindgen-cli \
+                     --version <version de wasm-bindgen dans Cargo.lock>`"
+                ),
+            )
+        })?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "échec de wasm-bindgen ({status})"
+        )));
+    }
+    fs::copy(workspace.join("web/index.html"), out.join("index.html"))?;
+    println!(
+        "{} : index.html, shapez.js, shapez_bg.wasm et {count} fichiers d'assets{}",
+        out.display(),
+        if with_music { "" } else { " (sans la musique)" }
+    );
+    Ok(())
+}
+
+fn check_assets(workspace: &Path) -> io::Result<()> {
+    let assets = workspace.join("assets");
+    if assets.join("sprites").is_dir() && assets.join("i18n").is_dir() {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "assets absents : lancez d'abord `cargo xtask import-assets --fonts`",
+        ))
+    }
+}
+
+/// `cargo build --profile <profile> -p shapez_game [--target <triplet>]`.
+fn build_game(workspace: &Path, profile: &str, target: Option<&str>) -> io::Result<()> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut build = std::process::Command::new(cargo);
+    build
+        .current_dir(workspace)
+        .args(["build", "--profile", profile, "-p", "shapez_game"]);
+    if let Some(t) = target {
+        build.args(["--target", t]);
+    }
+    let status = build.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "échec de la compilation ({status})"
+        )))
+    }
+}
+
+/// Crée (vide) `target/packages/<nom>-<version>-<suffixe>/` avec LICENSE, NOTICE, README
+/// et `assets/`. Renvoie le dossier et le nombre de fichiers d'assets copiés.
+fn package_dir(workspace: &Path, suffix: &str, with_music: bool) -> io::Result<(PathBuf, usize)> {
+    let out = workspace.join("target/packages").join(format!(
+        "{DIST_NAME}-{}-{suffix}",
+        env!("CARGO_PKG_VERSION")
+    ));
+    if out.exists() {
+        fs::remove_dir_all(&out)?;
+    }
+    fs::create_dir_all(out.join("assets"))?;
+    for file in ["LICENSE", "NOTICE", "README.md"] {
+        fs::copy(workspace.join(file), out.join(file))?;
+    }
+    let mut count = 0;
+    for entry in fs::read_dir(workspace.join("assets"))? {
+        let entry = entry?;
+        let target = out.join("assets").join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            count += copy_dist_tree(&entry.path(), &target, with_music)?;
+        } else {
+            fs::copy(entry.path(), target)?;
+            count += 1;
+        }
+    }
+    Ok((out, count))
 }
 
 /// Copie récursive de tout un dossier, sauf `sounds/music` si `with_music` est faux.
