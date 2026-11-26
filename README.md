@@ -319,10 +319,15 @@ données de la plateforme, ou dans `SHAPEZ_SAVE_DIR` s'il est défini :
 ## Paramètres
 
 Le bouton « Paramètres » du menu principal règle la langue, le volume des effets, celui
-de la musique et le plein écran. Les volumes et le plein écran s'appliquent tout de
-suite ; une nouvelle langue s'applique au prochain lancement. Les effets sonores viennent
-de `cargo xtask import-assets` ; la musique n'est jouée que si elle a été importée avec
-`--music`.
+de la musique, le plein écran, le thème (sombre ou clair) et l'aide daltonien. Tout
+s'applique tout de suite, sauf la langue, qui s'applique au prochain lancement. Les
+effets sonores viennent de `cargo xtask import-assets` ; la musique n'est jouée que si
+elle a été importée avec `--music`.
+
+Le thème change les couleurs de la carte en partie (fond, grille, gisements) et du texte
+posé dessus ; les menus restent sombres. L'aide daltonien affiche le nom de la couleur
+sous le curseur (item d'un convoyeur, item en sortie d'un bâtiment, ou gisement) et
+entoure la tuile, comme dans le jeu d'origine.
 
 Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
 de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :

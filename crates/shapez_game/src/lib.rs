@@ -6,6 +6,7 @@ use bevy::prelude::*;
 pub mod audio;
 pub mod buildings_view;
 pub mod camera;
+pub mod color_blind;
 pub mod editing_ui;
 pub mod gallery;
 pub mod i18n;
@@ -24,6 +25,7 @@ pub mod shop;
 pub mod signal_edit;
 pub mod sim;
 pub mod state;
+pub mod theme;
 pub mod underlays;
 pub mod wires_ui;
 
@@ -54,6 +56,8 @@ impl Plugin for GamePlugin {
                 asset_dir: asset_dir(),
             },
             settings_ui::SettingsUiPlugin,
+            theme::ThemePlugin,
+            color_blind::ColorBlindPlugin,
             state::AppStatePlugin,
             sim::SimPlugin,
             menu::MenuPlugin,

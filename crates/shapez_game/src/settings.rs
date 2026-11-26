@@ -10,6 +10,8 @@ use bevy::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::theme::ThemeId;
+
 /// Pas des boutons de volume.
 pub const VOLUME_STEP: f32 = 0.1;
 
@@ -25,6 +27,9 @@ pub struct Settings {
     /// Volume de la musique, de 0 à 1.
     pub music_volume: f32,
     pub fullscreen: bool,
+    pub theme: ThemeId,
+    /// `enableColorBlindHelper`.
+    pub color_blind: bool,
 }
 
 impl Default for Settings {
@@ -36,6 +41,8 @@ impl Default for Settings {
             sound_volume: 1.0,
             music_volume: 1.0,
             fullscreen: false,
+            theme: ThemeId::Dark,
+            color_blind: false,
         }
     }
 }
@@ -146,6 +153,8 @@ mod tests {
             sound_volume: 0.3,
             music_volume: 0.0,
             fullscreen: true,
+            theme: ThemeId::Light,
+            color_blind: true,
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path), settings);
