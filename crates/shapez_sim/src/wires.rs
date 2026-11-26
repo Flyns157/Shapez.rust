@@ -101,6 +101,13 @@ pub struct Wiring {
     pin_networks: SecondaryMap<BuildingId, Vec<Option<NetworkId>>>,
     #[serde(skip)]
     tunnel_networks: SecondaryMap<BuildingId, Vec<NetworkId>>,
+    /// Émetteurs constants puis leviers, dans l'ordre de l'arène : la liste que le JS
+    /// parcourt à chaque tick, gardée ici pour ne pas balayer tous les bâtiments.
+    #[serde(skip)]
+    emitters: Vec<BuildingId>,
+    /// Portes, transistors, analyseurs, comparateurs et processeurs virtuels.
+    #[serde(skip)]
+    gates: Vec<BuildingId>,
     #[serde(skip, default = "yes")]
     dirty: bool,
 }
@@ -117,6 +124,8 @@ impl Default for Wiring {
             wire_network: SecondaryMap::new(),
             pin_networks: SecondaryMap::new(),
             tunnel_networks: SecondaryMap::new(),
+            emitters: Vec::new(),
+            gates: Vec::new(),
             dirty: true,
         }
     }
@@ -224,16 +233,16 @@ impl Wiring {
         }
 
         // `ConstantSignalSystem` puis `LeverSystem`.
-        for kind in [BuildingKind::ConstantSignal, BuildingKind::Lever] {
-            for (id, building) in buildings.iter().filter(|(_, b)| b.kind == kind) {
-                let value = match kind {
-                    BuildingKind::Lever => {
-                        Some(Item::Bool(building.config == Some(Item::Bool(true))))
-                    }
-                    _ => building.config,
-                };
-                self.pins_mut(id, building)[0] = value;
-            }
+        for i in 0..self.emitters.len() {
+            let id = self.emitters[i];
+            let Some(building) = buildings.get(id) else {
+                continue;
+            };
+            let value = match building.kind {
+                BuildingKind::Lever => Some(Item::Bool(building.config == Some(Item::Bool(true)))),
+                _ => building.config,
+            };
+            self.pins_mut(id, building)[0] = value;
         }
 
         // `WireSystem.update` : agrégation des émetteurs.
@@ -259,17 +268,11 @@ impl Wiring {
         }
 
         // `LogicGateSystem.update`.
-        for (id, building) in buildings.iter() {
-            if !matches!(
-                building.kind,
-                BuildingKind::LogicGate
-                    | BuildingKind::Transistor
-                    | BuildingKind::Analyzer
-                    | BuildingKind::Comparator
-                    | BuildingKind::VirtualProcessor
-            ) {
+        for i in 0..self.gates.len() {
+            let id = self.gates[i];
+            let Some(building) = buildings.get(id) else {
                 continue;
-            }
+            };
             let pins = building.world_pins();
             let mut inputs = Vec::with_capacity(pins.len());
             let mut conflict = false;
@@ -326,6 +329,22 @@ impl Wiring {
         self.wire_network.clear();
         self.tunnel_networks.clear();
         self.pin_networks.clear();
+        let of_kind = |kinds: &[BuildingKind]| -> Vec<BuildingId> {
+            buildings
+                .iter()
+                .filter(|(_, b)| kinds.contains(&b.kind))
+                .map(|(id, _)| id)
+                .collect()
+        };
+        self.emitters = of_kind(&[BuildingKind::ConstantSignal]);
+        self.emitters.extend(of_kind(&[BuildingKind::Lever]));
+        self.gates = of_kind(&[
+            BuildingKind::LogicGate,
+            BuildingKind::Transistor,
+            BuildingKind::Analyzer,
+            BuildingKind::Comparator,
+            BuildingKind::VirtualProcessor,
+        ]);
         for (id, building) in buildings.iter() {
             let n = building.world_pins().len();
             if n > 0 {
