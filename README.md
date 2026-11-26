@@ -343,6 +343,15 @@ l'objectif du plan, s'ajoute ; sa préparation est plus longue.
 La génération d'un chunk est aussi mesurée. La CI lance ces benchmarks sur `main`
 uniquement.
 
+Pour compter les allocations d'un tick sur ces mêmes usines :
+
+```sh
+cargo run --release -p shapez_sim --example alloc_profile
+```
+
+En régime établi, un tick n'alloue rien : une arène (`bumpalo`, plan §3.3) n'apporterait
+rien. Le test `no_alloc` vérifie que cela reste vrai.
+
 ## Compiler pour Windows depuis Linux
 
 On peut produire un `.exe` Windows depuis Linux avec la cible GNU et MinGW. Exemple sous

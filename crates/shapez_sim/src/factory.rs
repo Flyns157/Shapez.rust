@@ -1134,9 +1134,9 @@ impl Factory {
     }
 
     fn update_processors(&mut self, ctx: &mut TickContext<'_>) {
-        let ids: Vec<BuildingId> = self.receivers.processors.keys().collect();
-        for id in ids {
-            let p = &mut self.receivers.processors[id];
+        // Champs distincts de `self` : pas besoin de copier les identifiants (une
+        // allocation par tick, vue au profilage).
+        for (id, p) in self.receivers.processors.iter_mut() {
             if let Some(charge) = p.charges.front_mut() {
                 if charge.remaining > 0 {
                     charge.remaining -= TICK as i64;
