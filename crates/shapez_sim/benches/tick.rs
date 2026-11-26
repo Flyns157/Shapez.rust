@@ -5,7 +5,8 @@
 //!   Tous les items bougent à chaque tick : c'est le pire cas, que les chemins dormants
 //!   n'aident pas.
 //! - `blocked` : des lignes saturées qui débouchent sur le vide. Plus rien ne bouge :
-//!   c'est le cas que les chemins dormants doivent rendre presque gratuit.
+//!   c'est le cas que les chemins dormants rendent presque gratuit ; `blocked_awake`
+//!   mesure la même usine sans eux.
 //!
 //! `cargo bench -p shapez_sim` ; `SHAPEZ_BENCH_FULL=1` ajoute les cartes de 500 000
 //! tuiles, longues à préparer.
@@ -133,6 +134,12 @@ fn tick(c: &mut Criterion) {
             world.factory.item_count()
         );
         group.bench_with_input(BenchmarkId::new("blocked", tiles), &tiles, |b, _| {
+            b.iter(|| world.tick());
+        });
+
+        // Même usine sans chemins dormants, pour mesurer leur gain.
+        world.factory.disable_dormancy();
+        group.bench_with_input(BenchmarkId::new("blocked_awake", tiles), &tiles, |b, _| {
             b.iter(|| world.tick());
         });
     }
