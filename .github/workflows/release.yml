@@ -1,0 +1,91 @@
+name: Release
+
+# Archives du jeu pour Windows, macOS et Linux (plan, jalon M10).
+# - À la main (onglet Actions, « Run workflow ») : les archives sont des artefacts du run.
+# - Sur un tag `v*` : elles sont aussi jointes à une release GitHub créée en **brouillon**,
+#   à relire puis publier depuis l'onglet Releases.
+on:
+    workflow_dispatch:
+    push:
+        tags: ["v*"]
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    build:
+        name: ${{ matrix.target }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      target: x86_64-unknown-linux-gnu
+                    - os: windows-latest
+                      target: x86_64-pc-windows-msvc
+                    - os: macos-latest
+                      target: aarch64-apple-darwin
+                    - os: macos-latest
+                      target: x86_64-apple-darwin
+        runs-on: ${{ matrix.os }}
+        steps:
+            - uses: actions/checkout@v4
+            # Les assets viennent du jeu d'origine, comme pour `cargo xtask import-assets`.
+            - uses: actions/checkout@v4
+              with:
+                  repository: Flyns157/shapez.io
+                  path: shapez.io
+            - name: Dépendances système de Bevy
+              if: runner.os == 'Linux'
+              run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+            - name: Toolchain (rust-toolchain.toml)
+              shell: bash
+              run: |
+                  rustup show active-toolchain || rustup toolchain install
+                  rustup target add ${{ matrix.target }}
+            - uses: Swatinem/rust-cache@v2
+              with:
+                  key: ${{ matrix.target }}
+            # Sans `--music` : les droits de la musique d'origine ne sont pas vérifiés (NOTICE).
+            - name: Assets (sans la musique)
+              run: cargo xtask import-assets --fonts
+              env:
+                  SHAPEZ_JS_ROOT: shapez.io
+            - name: Compilation et dossier de distribution
+              run: cargo xtask dist --target ${{ matrix.target }}
+            - name: Archive
+              id: archive
+              shell: bash
+              run: |
+                  cd target/packages
+                  name=$(ls)
+                  if [ "${{ runner.os }}" = "Windows" ]; then
+                      7z a -tzip "$name.zip" "$name" > /dev/null
+                      echo "file=target/packages/$name.zip" >> "$GITHUB_OUTPUT"
+                  else
+                      tar czf "$name.tar.gz" "$name"
+                      echo "file=target/packages/$name.tar.gz" >> "$GITHUB_OUTPUT"
+                  fi
+            - uses: actions/upload-artifact@v4
+              with:
+                  name: ${{ matrix.target }}
+                  path: ${{ steps.archive.outputs.file }}
+                  if-no-files-found: error
+
+    release:
+        name: release (brouillon)
+        if: startsWith(github.ref, 'refs/tags/v')
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/download-artifact@v4
+              with:
+                  path: archives
+                  merge-multiple: true
+            - uses: softprops/action-gh-release@v2
+              with:
+                  draft: true
+                  files: archives/*
+                  generate_release_notes: true

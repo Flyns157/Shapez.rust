@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! cargo xtask import-assets [--music] [--fonts]
+//! cargo xtask dist [--target <triplet>] [--music]
 //! ```
 
 use std::{
@@ -32,8 +33,17 @@ fn main() -> ExitCode {
             args.iter().any(|a| a == "--music"),
             args.iter().any(|a| a == "--fonts"),
         ),
+        Some("dist") => dist(
+            args.windows(2)
+                .find(|w| w[0] == "--target")
+                .map(|w| w[1].as_str()),
+            args.iter().any(|a| a == "--music"),
+        ),
         _ => {
-            eprintln!("usage : cargo xtask import-assets [--music] [--fonts]");
+            eprintln!(
+                "usage : cargo xtask import-assets [--music] [--fonts]\n        \
+                 cargo xtask dist [--target <triplet>] [--music]"
+            );
             return ExitCode::FAILURE;
         }
     };
@@ -226,4 +236,118 @@ fn copy_tree(from: &Path, to: &Path) -> io::Result<usize> {
         }
     }
     Ok(count)
+}
+
+/// Nom des archives distribuées. Le plan (§2) demande d'éviter « shapez » pour une
+/// diffusion publique : à changer ici le jour où un nom définitif est choisi.
+const DIST_NAME: &str = "shapez-rs";
+
+/// Compile le jeu avec le profil `dist` et prépare `target/packages/<nom>-<version>-<triplet>/` :
+/// l'exécutable, `assets/` (que le jeu cherche à côté de lui), LICENSE, NOTICE et README.
+/// La musique n'est copiée qu'avec `--music`, ses droits n'étant pas vérifiés (NOTICE).
+/// Le dossier est ensuite archivé par la CI (`.github/workflows/release.yml`).
+fn dist(target: Option<&str>, with_music: bool) -> io::Result<()> {
+    let workspace = workspace_root();
+    let assets = workspace.join("assets");
+    if !assets.join("sprites").is_dir() || !assets.join("i18n").is_dir() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "assets absents : lancez d'abord `cargo xtask import-assets --fonts`",
+        ));
+    }
+    let triple = match target {
+        Some(t) => t.to_string(),
+        None => host_triple()?,
+    };
+
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut build = std::process::Command::new(cargo);
+    build
+        .current_dir(&workspace)
+        .args(["build", "--profile", "dist", "-p", "shapez_game"]);
+    if let Some(t) = target {
+        build.args(["--target", t]);
+    }
+    let status = build.status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "échec de la compilation ({status})"
+        )));
+    }
+
+    let release = match target {
+        Some(t) => workspace.join("target").join(t).join("dist"),
+        None => workspace.join("target/dist"),
+    };
+    let exe = if triple.contains("windows") {
+        "shapez_game.exe"
+    } else {
+        "shapez_game"
+    };
+    let out = workspace.join("target/packages").join(format!(
+        "{DIST_NAME}-{}-{triple}",
+        env!("CARGO_PKG_VERSION")
+    ));
+    if out.exists() {
+        fs::remove_dir_all(&out)?;
+    }
+    fs::create_dir_all(&out)?;
+    let exe_out = if triple.contains("windows") {
+        format!("{DIST_NAME}.exe")
+    } else {
+        DIST_NAME.to_string()
+    };
+    fs::copy(release.join(exe), out.join(&exe_out))?;
+    for file in ["LICENSE", "NOTICE", "README.md"] {
+        fs::copy(workspace.join(file), out.join(file))?;
+    }
+    let mut count = 0;
+    for entry in fs::read_dir(&assets)? {
+        let entry = entry?;
+        let target = out.join("assets").join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            count += copy_dist_tree(&entry.path(), &target, with_music)?;
+        } else {
+            fs::create_dir_all(out.join("assets"))?;
+            fs::copy(entry.path(), target)?;
+            count += 1;
+        }
+    }
+    println!(
+        "{} : {exe_out} et {count} fichiers d'assets{}",
+        out.display(),
+        if with_music { "" } else { " (sans la musique)" }
+    );
+    Ok(())
+}
+
+/// Copie récursive de tout un dossier, sauf `sounds/music` si `with_music` est faux.
+fn copy_dist_tree(from: &Path, to: &Path, with_music: bool) -> io::Result<usize> {
+    if !with_music && from.ends_with("sounds/music") {
+        return Ok(0);
+    }
+    fs::create_dir_all(to)?;
+    let mut count = 0;
+    for entry in fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            count += copy_dist_tree(&entry.path(), &target, with_music)?;
+        } else {
+            fs::copy(entry.path(), target)?;
+            count += 1;
+        }
+    }
+    Ok(count)
+}
+
+/// Triplet de la machine, lu dans `rustc -vV`.
+fn host_triple() -> io::Result<String> {
+    let rustc = env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+    let output = std::process::Command::new(rustc).arg("-vV").output()?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|l| l.strip_prefix("host: "))
+        .map(str::to_string)
+        .ok_or_else(|| io::Error::other("triplet de la machine introuvable dans `rustc -vV`"))
 }

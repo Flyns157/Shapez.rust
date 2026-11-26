@@ -36,6 +36,18 @@ jobs:
             - name: Aucune dépendance Bevy dans la simulation
               run: "! cargo tree -p shapez_sim -e normal | grep -q bevy"
 
+    wasm:
+        name: build wasm32 (vérification)
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - run: |
+                  rustup show active-toolchain || rustup toolchain install
+                  rustup target add wasm32-unknown-unknown
+            - uses: Swatinem/rust-cache@v2
+            # Plan §9.3 : le jeu doit continuer de compiler pour le web (version jouable à venir).
+            - run: cargo check --target wasm32-unknown-unknown -p shapez_game
+
     deny:
         name: cargo deny
         runs-on: ubuntu-latest

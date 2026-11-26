@@ -39,3 +39,8 @@ opt-level = 3
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Archives distribuées (`cargo xtask dist`) : release sans les symboles de débogage.
+[profile.dist]
+inherits = "release"
+strip = true

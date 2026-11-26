@@ -84,11 +84,22 @@ impl Plugin for GamePlugin {
     }
 }
 
-/// Dossier `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
-/// `SHAPEZ_ASSETS` permet de le déplacer, par exemple pour un binaire distribué.
+/// Dossier des assets, dans cet ordre :
+/// - `SHAPEZ_ASSETS`, s'il est défini ;
+/// - `assets/` à côté de l'exécutable, comme dans les archives de `cargo xtask dist` ;
+/// - `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
 pub fn asset_dir() -> String {
-    std::env::var("SHAPEZ_ASSETS")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets").to_string())
+    if let Ok(dir) = std::env::var("SHAPEZ_ASSETS") {
+        return dir;
+    }
+    let beside_exe = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("assets")))
+        .filter(|dir| dir.join("sprites").is_dir());
+    match beside_exe {
+        Some(dir) => dir.to_string_lossy().into_owned(),
+        None => concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets").to_string(),
+    }
 }
 
 fn spawn_camera(mut commands: Commands) {

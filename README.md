@@ -15,6 +15,7 @@ complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
   - [5. Lancer le jeu](#5-lancer-le-jeu)
     - [Raccourcis de construction](#raccourcis-de-construction)
   - [6. Lancer les tests](#6-lancer-les-tests)
+- [Distribuer le jeu](#distribuer-le-jeu)
 - [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
 - [Variables d'environnement](#variables-denvironnement)
 - [Sauvegardes](#sauvegardes)
@@ -259,6 +260,44 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+## Distribuer le jeu
+
+`cargo xtask dist` compile le jeu avec le profil `dist` (release sans symboles de
+débogage) et prépare un dossier prêt à archiver dans `target/packages/` :
+
+```text
+shapez-rs-0.1.0-x86_64-unknown-linux-gnu/
+├── shapez-rs          (shapez-rs.exe sous Windows)
+├── assets/            copie de assets/, sans la musique
+├── LICENSE
+├── NOTICE
+└── README.md
+```
+
+Le jeu cherche `assets/` à côté de son exécutable : le dossier peut être déplacé n'importe
+où. Les assets doivent avoir été importés avant (`cargo xtask import-assets --fonts`).
+Options :
+
+- `--target <triplet>` : compile pour une autre cible (par exemple
+  `x86_64-pc-windows-gnu`, voir la section suivante) ;
+- `--music` : copie aussi la musique, si elle a été importée. Elle est exclue par défaut,
+  car ses droits restent à vérifier avant une diffusion publique (voir `NOTICE`).
+
+Sous Linux, le binaire a besoin des bibliothèques ALSA et udev du système (`libasound2`,
+`libudev1`), présentes sur la plupart des distributions de bureau.
+
+Le workflow GitHub **Release** (`.github/workflows/release.yml`) fait la même chose pour
+Linux x86_64, Windows x86_64 et macOS (Apple Silicon et Intel) :
+
+- lancé à la main depuis l'onglet Actions (« Run workflow »), il produit les quatre
+  archives comme artefacts du run ;
+- sur un tag `v*` (`git tag v0.1.0 && git push origin v0.1.0`), il les joint en plus à
+  une release GitHub **en brouillon**, à relire puis publier depuis l'onglet Releases.
+
+La CI vérifie aussi que le jeu compile pour le web (`wasm32-unknown-unknown`). La version
+web jouable n'est pas encore là : les traductions, les polices, les paramètres et les
+sauvegardes sont lus avec `std::fs`, absent du navigateur.
+
 ## Compiler pour Windows depuis Linux
 
 On peut produire un `.exe` Windows depuis Linux avec la cible GNU et MinGW. Exemple sous
@@ -274,13 +313,8 @@ Le binaire est dans `target/x86_64-pc-windows-gnu/release/shapez_game.exe`. Il n
 que de DLL fournies par Windows : aucune DLL MinGW n'est à copier avec lui.
 
 Pour le lancer sur un PC Windows, copiez à côté de lui le dossier `assets/` (rempli par
-`cargo xtask import-assets`), puis indiquez son emplacement avec `SHAPEZ_ASSETS`. C'est
-nécessaire car le chemin des assets compilé par défaut est celui de la machine Linux :
-
-```powershell
-$env:SHAPEZ_ASSETS = "$PWD\assets"
-.\shapez_game.exe
-```
+`cargo xtask import-assets`) : le jeu le trouve tout seul. Le plus simple est
+`cargo xtask dist --target x86_64-pc-windows-gnu`, qui prépare ce dossier.
 
 N'utilisez pas `--features dev` pour une compilation croisée : le binaire dépendrait de
 DLL qui ne sont pas distribuées avec lui.
@@ -292,7 +326,7 @@ Toutes sont facultatives.
 | Variable | Utilisée par | Effet | Valeur par défaut |
 |---|---|---|---|
 | `SHAPEZ_JS_ROOT` | `cargo xtask import-assets`, oracle JS | Chemin du clone du code source de shapez.io | `../shapez.io` |
-| `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à la racine de ce dépôt |
+| `SHAPEZ_ASSETS` | le jeu | Dossier des assets importés | `assets/` à côté de l'exécutable s'il existe, sinon à la racine de ce dépôt |
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
 | `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
