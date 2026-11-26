@@ -12,6 +12,8 @@ pub mod files;
 pub mod gallery;
 pub mod i18n;
 pub mod items_view;
+pub mod keybindings;
+pub mod keybindings_ui;
 pub mod main_menu;
 pub mod map_render;
 pub mod marks_ui;
@@ -19,6 +21,7 @@ pub mod menu;
 pub mod overlays;
 pub mod placement_ui;
 pub mod saves;
+pub mod screenshot;
 pub mod settings;
 pub mod settings_ui;
 pub mod shape_textures;
@@ -81,6 +84,11 @@ impl Plugin for GamePlugin {
             underlays::UnderlaysPlugin,
             signal_edit::SignalEditPlugin,
         ))
+        .add_plugins((
+            screenshot::ScreenshotPlugin,
+            keybindings::KeybindingsPlugin,
+            keybindings_ui::KeybindingsUiPlugin,
+        ))
         .add_systems(Startup, spawn_camera);
     }
 }
@@ -120,5 +128,5 @@ pub fn asset_dir() -> String {
 }
 
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn(Camera2d);
+    commands.spawn((Camera2d, camera::MainCamera, IsDefaultUiCamera));
 }

@@ -247,6 +247,12 @@ Le binaire produit est `target/release/shapez_game` (`shapez_game.exe` sous Wind
 | Changer le signal d'un émetteur constant | clic dessus sur la couche câbles, puis choisir une valeur ou taper un code (`1`, `false`, `red`, `CuCuCuCu`…) et Entrée |
 | Lecteur, filtre, afficheur | U, O, P (couche normale ou câbles) |
 | Processeur virtuel, analyseur, comparateur | 5, 6, 7 sur la couche câbles (T : variante du processeur) |
+| Exporter la base en image | F3 |
+
+Ce sont les touches par défaut. Les touches simples (bâtiments, déplacement, pipette,
+rotation, variante, améliorations, statistiques, couche, repère, export, vider et supprimer
+la sélection) se changent dans **Paramètres → Contrôles**. Les raccourcis Ctrl, Échap,
+Espace, Tab, les flèches et X restent fixes.
 
 ### 6. Lancer les tests
 
@@ -321,6 +327,22 @@ Différences avec la version de bureau :
 Le workflow **Release** produit aussi cette archive (`shapez-rs-<version>-web.zip`), et la
 CI vérifie à chaque PR que le jeu compile pour `wasm32-unknown-unknown`.
 
+### Mesurer les performances
+
+```sh
+cargo bench -p shapez_sim
+```
+
+Ces benchmarks mesurent un tick complet de la simulation sur deux usines de 10 000 et
+100 000 tuiles de convoyeur. Avec `SHAPEZ_BENCH_FULL=1`, la taille de 500 000 tuiles,
+l'objectif du plan, s'ajoute ; sa préparation est plus longue.
+
+- `rings` : des anneaux fermés dont tous les items tournent ;
+- `blocked` : des lignes saturées dont plus rien ne bouge.
+
+La génération d'un chunk est aussi mesurée. La CI lance ces benchmarks sur `main`
+uniquement.
+
 ## Compiler pour Windows depuis Linux
 
 On peut produire un `.exe` Windows depuis Linux avec la cible GNU et MinGW. Exemple sous
@@ -353,6 +375,7 @@ Toutes sont facultatives.
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
 | `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
+| `SHAPEZ_SCREENSHOT_DIR` | le jeu | Dossier des exports de la base (F3) | voir [Paramètres](#paramètres) |
 | `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Elle passe avant la langue choisie dans les [paramètres](#paramètres), qui passe elle-même avant la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
@@ -385,6 +408,18 @@ Le thème change les couleurs de la carte en partie (fond, grille, gisements) et
 posé dessus ; les menus restent sombres. L'aide daltonien affiche le nom de la couleur
 sous le curseur (item d'un convoyeur, item en sortie d'un bâtiment, ou gisement) et
 entoure la tuile, comme dans le jeu d'origine.
+
+En partie, **F3** exporte toute la base en PNG, comme le jeu d'origine : l'image couvre
+tous les bâtiments (128 pixels par chunk, moins pour une très grande base). Elle est écrite
+dans le dossier `screenshots` du dossier de données (à côté des sauvegardes), ou dans
+celui indiqué par `SHAPEZ_SCREENSHOT_DIR`.
+
+L'écran **Contrôles** liste les touches par catégorie, comme le jeu d'origine : « Changer »
+attend la nouvelle touche (Échap annule), « Réinitialiser » revient à la touche par défaut.
+Les touches sont physiques : celle à la place du W d'un clavier QWERTY reste « aller en
+haut » sur un AZERTY. Leur libellé suit l'agencement du clavier dès qu'elles ont été
+tapées une fois ; avant, c'est le nom QWERTY. Seules les touches changées sont
+enregistrées, sous `keybindings`.
 
 Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
 de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :
