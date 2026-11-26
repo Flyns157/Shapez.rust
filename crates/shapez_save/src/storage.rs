@@ -1,13 +1,10 @@
-//! Fichiers de sauvegarde sur disque : un fichier `<nom>.shapezsave` par partie dans
-//! le dossier de données de l'utilisateur, écrit de façon atomique.
+//! Fichiers de sauvegarde : un fichier `<nom>.shapezsave` par partie dans le dossier de
+//! données de l'utilisateur (le `localStorage` sur le web, voir [`crate::disk`]), écrit
+//! de façon atomique.
 
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
-use crate::{SaveError, SaveMeta, read_meta};
+use crate::{SaveError, SaveMeta, disk, read_meta};
 
 /// Extension des fichiers de sauvegarde.
 pub const EXTENSION: &str = "shapezsave";
@@ -34,8 +31,12 @@ impl SaveDir {
     }
 
     /// Dossier par défaut : `SHAPEZ_SAVE_DIR`, sinon le dossier de données de la
-    /// plateforme (`~/.local/share/shapez-rs/saves` sous Linux).
+    /// plateforme (`~/.local/share/shapez-rs/saves` sous Linux), ou `saves` dans le
+    /// `localStorage` du navigateur.
     pub fn default_location() -> Option<Self> {
+        if cfg!(target_arch = "wasm32") {
+            return Some(Self::new("saves"));
+        }
         if let Some(dir) = std::env::var_os("SHAPEZ_SAVE_DIR") {
             return Some(Self::new(dir));
         }
@@ -53,16 +54,12 @@ impl SaveDir {
 
     /// Sauvegardes, de la plus récente à la plus ancienne.
     pub fn list(&self) -> Vec<SaveEntry> {
-        let Ok(dir) = fs::read_dir(&self.root) else {
-            return Vec::new();
-        };
-        let mut entries: Vec<SaveEntry> = dir
-            .filter_map(Result::ok)
-            .map(|e| e.path())
+        let mut entries: Vec<SaveEntry> = disk::list(&self.root)
+            .into_iter()
             .filter(|p| p.extension().is_some_and(|e| e == EXTENSION))
             .filter_map(|path| {
                 let name = path.file_stem()?.to_str()?.to_owned();
-                let meta = fs::read(&path)
+                let meta = disk::read(&path)
                     .map_err(SaveError::from)
                     .and_then(|bytes| read_meta(&bytes))
                     .map_err(|e| e.to_string());
@@ -80,36 +77,29 @@ impl SaveDir {
     pub fn fresh_name(&self) -> String {
         (1..)
             .map(|n| format!("partie-{n}"))
-            .find(|name| !self.path_of(name).exists())
+            .find(|name| !disk::exists(&self.path_of(name)))
             .expect("un nom libre finit par exister")
     }
 
-    /// Écrit dans un fichier temporaire, synchronise, puis renomme : un plantage en
-    /// cours d'écriture laisse l'ancienne sauvegarde intacte.
+    /// Écriture atomique : un plantage en cours d'écriture laisse l'ancienne sauvegarde
+    /// intacte.
     pub fn write(&self, name: &str, bytes: &[u8]) -> Result<(), SaveError> {
-        fs::create_dir_all(&self.root)?;
-        let target = self.path_of(name);
-        let tmp = self.root.join(format!(".{name}.{EXTENSION}.tmp"));
-        {
-            let mut file = fs::File::create(&tmp)?;
-            file.write_all(bytes)?;
-            file.sync_all()?;
-        }
-        fs::rename(&tmp, &target)?;
-        Ok(())
+        Ok(disk::write_atomic(&self.path_of(name), bytes)?)
     }
 
     pub fn read(&self, name: &str) -> Result<Vec<u8>, SaveError> {
-        Ok(fs::read(self.path_of(name))?)
+        Ok(disk::read(&self.path_of(name))?)
     }
 
     pub fn delete(&self, name: &str) -> Result<(), SaveError> {
-        Ok(fs::remove_file(self.path_of(name))?)
+        Ok(disk::remove(&self.path_of(name))?)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use crate::encode;
     use shapez_sim::SimWorld;

@@ -8,6 +8,7 @@ pub mod buildings_view;
 pub mod camera;
 pub mod color_blind;
 pub mod editing_ui;
+pub mod files;
 pub mod gallery;
 pub mod i18n;
 pub mod items_view;
@@ -26,6 +27,7 @@ pub mod settings_ui;
 pub mod shape_textures;
 pub mod shop;
 pub mod signal_edit;
+pub mod silhouettes;
 pub mod sim;
 pub mod state;
 pub mod theme;
@@ -99,11 +101,27 @@ impl Plugin for GamePlugin {
     }
 }
 
+/// Fichiers d'assets lus au démarrage, avant l'`AssetServer` : la version web les
+/// télécharge avec [`files::preload`] avant de construire l'application.
+pub fn startup_asset_files() -> Vec<std::path::PathBuf> {
+    let language = settings::Settings::default_path()
+        .as_deref()
+        .map(settings::Settings::load)
+        .unwrap_or_default()
+        .language;
+    i18n::startup_files(std::path::Path::new(&asset_dir()), language.as_deref())
+}
+
 /// Dossier des assets, dans cet ordre :
 /// - `SHAPEZ_ASSETS`, s'il est défini ;
 /// - `assets/` à côté de l'exécutable, comme dans les archives de `cargo xtask dist` ;
 /// - `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
+///
+/// Sur le web, c'est `assets` à côté de la page, lu par HTTP.
 pub fn asset_dir() -> String {
+    if cfg!(target_arch = "wasm32") {
+        return "assets".to_string();
+    }
     if let Ok(dir) = std::env::var("SHAPEZ_ASSETS") {
         return dir;
     }

@@ -49,6 +49,10 @@ pub struct Theme {
     pub resources: [[u8; 3]; 4],
     /// `map.chunkOverview.empty`.
     pub overview_empty: [u8; 3],
+    /// `map.chunkOverview.filled` : fond d'un chunk qui contient des bâtiments.
+    pub overview_filled: [u8; 3],
+    /// `map.chunkOverview.beltColor` : silhouette des convoyeurs.
+    pub overview_belt: [u8; 3],
     /// `map.colorBlindPickerTile`.
     pub color_blind_tile: Color,
     /// Texte du HUD sur la carte (le CSS du JS : clair en sombre, foncé en clair).
@@ -77,6 +81,8 @@ pub const DARK: Theme = Theme {
         [0x5e, 0x7c, 0xa4],
     ],
     overview_empty: [0x44, 0x48, 0x56],
+    overview_filled: [0x64, 0x6b, 0x7d],
+    overview_belt: [0x90, 0x96, 0xa3],
     color_blind_tile: Color::srgba(1.0, 1.0, 1.0, 0.5),
     hud_text: Color::WHITE,
 };
@@ -91,6 +97,8 @@ pub const LIGHT: Theme = Theme {
         [0xb2, 0xe0, 0xfa],
     ],
     overview_empty: [0xa6, 0xaf, 0xbb],
+    overview_filled: [0xc5, 0xcc, 0xd6],
+    overview_belt: [0x77, 0x77, 0x77],
     color_blind_tile: Color::srgba(50.0 / 255.0, 50.0 / 255.0, 50.0 / 255.0, 0.4),
     hud_text: Color::srgb_u8(0x39, 0x3c, 0x45),
 };

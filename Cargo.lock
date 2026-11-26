@@ -473,6 +473,13 @@ dependencies = [
  "windows-link",
 ]
 
+
+[[package]]
+name = "base64"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
 [[package]]
 name = "bevy"
 version = "0.20.1"
@@ -5234,6 +5241,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "directories",
+ "js-sys",
  "serde",
  "serde_json",
  "serde_norway",
@@ -5241,6 +5249,10 @@ dependencies = [
  "shapez_render_shapes",
  "shapez_save",
  "shapez_sim",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
 ]
 
 [[package]]
@@ -5255,12 +5267,16 @@ dependencies = [
 name = "shapez_save"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "crc32fast",
  "directories",
  "serde",
  "serde_json",
  "shapez_core",
  "shapez_sim",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
  "zstd",
 ]
 
