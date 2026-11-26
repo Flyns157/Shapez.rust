@@ -2,17 +2,20 @@
 //!
 //! Seuls les items à l'écran sont demandés à la simulation, et aucun en vue d'ensemble
 //! (le JS ne les dessine pas non plus à ce zoom) : le coût suit l'écran, pas l'usine.
+//! Pendant l'export de la base (F3), c'est toute la zone exportée.
 //!
 //! Un réservoir de sprites est réutilisé d'une image à l'autre : on n'en crée que
 //! lorsque le nombre d'items visibles augmente.
 
-use bevy::{camera::RenderTarget, prelude::*};
+use bevy::prelude::*;
 use shapez_core::{Item, TilePos};
+use shapez_sim::map::CHUNK_SIZE;
 
 use crate::{
     AppState,
     buildings_view::ITEM_Z,
-    camera::{TILE_SIZE, Zoom, tile_to_world, world_to_tile},
+    camera::{MainCamera, TILE_SIZE, Zoom, tile_to_world, world_to_tile},
+    screenshot::Exporting,
     shape_textures::ShapeTextures,
     sim::Sim,
 };
@@ -37,14 +40,6 @@ impl Plugin for ItemsViewPlugin {
     }
 }
 
-/// Caméras 2D et leur cible, pour retrouver celle du joueur.
-type Cameras<'w, 's> = Query<
-    'w,
-    's,
-    (&'static Transform, Option<&'static RenderTarget>),
-    (With<Camera2d>, Without<ItemSprite>),
->;
-
 #[allow(clippy::too_many_arguments)]
 fn draw_items(
     mut commands: Commands,
@@ -55,20 +50,19 @@ fn draw_items(
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<ItemSprite>>,
     zoom: Res<Zoom>,
     window: Single<&Window>,
-    cameras: Cameras,
+    camera: Single<&Transform, (With<MainCamera>, Without<ItemSprite>)>,
+    exporting: Option<Res<Exporting>>,
 ) {
-    // La caméra du joueur est celle qui rend dans la fenêtre (une autre peut rendre dans
-    // une image).
-    let center = cameras
-        .iter()
-        .find(|(_, target)| !matches!(target, Some(RenderTarget::Image(_))))
-        .map(|(t, _)| t.translation.truncate());
-    let items = match center {
-        Some(center) if !zoom.is_overview() => {
-            let (min, max) = screen_tiles(center, &window, zoom.0);
-            sim.factory.visible_items_in(&sim.buildings, min, max)
-        }
-        _ => Vec::new(),
+    let items = if let Some(export) = exporting {
+        let area = &export.area;
+        let min = TilePos::new(area.min.x * CHUNK_SIZE, area.min.y * CHUNK_SIZE);
+        let max = TilePos::new(area.max.x * CHUNK_SIZE - 1, area.max.y * CHUNK_SIZE - 1);
+        sim.factory.visible_items_in(&sim.buildings, min, max)
+    } else if zoom.is_overview() {
+        Vec::new()
+    } else {
+        let (min, max) = screen_tiles(camera.translation.truncate(), &window, zoom.0);
+        sim.factory.visible_items_in(&sim.buildings, min, max)
     };
     for (i, visible) in items.iter().enumerate() {
         let image = match visible.item {
