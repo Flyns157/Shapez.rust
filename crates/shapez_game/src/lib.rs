@@ -77,6 +77,13 @@ impl Plugin for GamePlugin {
             signal_edit::SignalEditPlugin,
         ))
         .add_systems(Startup, spawn_camera);
+        // Profilage avec une usine de charge : temps d'image dans les logs.
+        if std::env::var_os("SHAPEZ_STRESS").is_some() {
+            app.add_plugins((
+                bevy::diagnostic::FrameTimeDiagnosticsPlugin::default(),
+                bevy::diagnostic::LogDiagnosticsPlugin::default(),
+            ));
+        }
     }
 }
 

@@ -14,94 +14,22 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use shapez_core::{Color, Item, Rotation, TilePos};
+use shapez_core::TilePos;
 use shapez_sim::{
     SimWorld,
-    building::{BuildingKind, Variant},
     map::{ChunkPos, generate_chunk},
-    placement::{Placement, SimCommand},
+    stress,
 };
 
-/// Côté d'un anneau : 4 × 24 = 96 tuiles.
-const RING_SIDE: i32 = 25;
-/// Longueur d'une ligne bloquée.
-const LINE_LENGTH: i32 = 50;
-/// Items visés par tuile d'anneau : 300 000 items pour 500 000 tuiles (§5.4).
-const ITEMS_PER_TILE: f32 = 0.6;
-
-fn belt(world: &mut SimWorld, x: i32, y: i32, rot: Rotation) {
-    let tile = TilePos::new(x, y);
-    let mut p = Placement::new(BuildingKind::Belt, tile, rot).with_variant(Variant::Default);
-    (p.rotation, p.rotation_variant) = world.buildings.optimal_belt(tile, rot);
-    world
-        .apply(SimCommand::Place(p))
-        .unwrap_or_else(|e| panic!("convoyeur en {tile:?} : {e:?}"));
-}
-
-/// Anneau dans le sens horaire dont le coin haut-gauche est (x0, y0).
-fn ring(world: &mut SimWorld, x0: i32, y0: i32) {
-    let n = RING_SIDE - 1;
-    for i in 0..n {
-        belt(world, x0 + i, y0, Rotation::R90);
-        belt(world, x0 + n, y0 + i, Rotation::R180);
-        belt(world, x0 + n - i, y0 + n, Rotation::R270);
-        belt(world, x0, y0 + n - i, Rotation::R0);
-    }
-}
-
-/// Dépose des items aux `starts` jusqu'à `per_start` chacun, ou jusqu'à ce que plus rien
-/// ne rentre pendant une seconde de jeu.
-fn fill(world: &mut SimWorld, starts: &[TilePos], per_start: usize) {
-    let mut counts = vec![0; starts.len()];
-    let mut idle = 0;
-    while idle < 60 && counts.iter().any(|&c| c < per_start) {
-        let mut any = false;
-        for (start, count) in starts.iter().zip(&mut counts) {
-            if *count < per_start && world.inject_item(*start, Item::Color(Color::Red)) {
-                *count += 1;
-                any = true;
-            }
-        }
-        idle = if any { 0 } else { idle + 1 };
-        world.tick();
-    }
-}
-
-/// Grille d'anneaux couvrant `tiles` tuiles, remplie à [`ITEMS_PER_TILE`].
 fn rings_world(tiles: usize) -> SimWorld {
     let mut world = SimWorld::new(1);
-    let per_ring = (4 * (RING_SIDE - 1)) as usize;
-    let count = tiles / per_ring;
-    let columns = (count as f32).sqrt().ceil() as i32;
-    let step = RING_SIDE + 1;
-    let mut starts = Vec::with_capacity(count);
-    for i in 0..count as i32 {
-        let (x0, y0) = ((i % columns) * step, (i / columns) * step);
-        ring(&mut world, x0, y0);
-        starts.push(TilePos::new(x0 + 1, y0));
-    }
-    fill(
-        &mut world,
-        &starts,
-        (per_ring as f32 * ITEMS_PER_TILE) as usize,
-    );
+    stress::add_rings(&mut world, TilePos::new(0, 0), tiles);
     world
 }
 
-/// Lignes parallèles qui débouchent sur le vide, remplies jusqu'à saturation.
 fn blocked_world(tiles: usize) -> SimWorld {
     let mut world = SimWorld::new(1);
-    let count = tiles / LINE_LENGTH as usize;
-    let rows_per_block = 1000;
-    let mut starts = Vec::with_capacity(count);
-    for i in 0..count as i32 {
-        let (x0, y0) = ((i / rows_per_block) * (LINE_LENGTH + 1), i % rows_per_block);
-        for x in 0..LINE_LENGTH {
-            belt(&mut world, x0 + x, y0, Rotation::R90);
-        }
-        starts.push(TilePos::new(x0, y0));
-    }
-    fill(&mut world, &starts, usize::MAX);
+    stress::add_blocked_lines(&mut world, TilePos::new(0, 0), tiles);
     world
 }
 

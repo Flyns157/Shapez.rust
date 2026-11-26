@@ -13,6 +13,7 @@ pub mod hub_goals;
 pub mod map;
 pub mod marks;
 pub mod placement;
+pub mod stress;
 pub mod units;
 pub mod unlocks;
 pub mod upgrades;
