@@ -12,6 +12,7 @@ use shapez_sim::{
 use crate::{
     AppState,
     i18n::{building_name, reward_name, tf, upgrade_name},
+    keybindings::tk_with,
     placement_ui::{PlacementState, toolbar_key},
     shape_textures::ShapeTextures,
     shop::{OpenPanel, roman},
@@ -120,7 +121,7 @@ fn update_hud(
     mut goal: Single<&mut Text, (With<GoalText>, Without<TickText>)>,
     mut icon: Single<&mut ImageNode, With<GoalIcon>>,
 ) {
-    let status = tf(
+    let status = tk_with(
         "port.hud.status",
         &[
             ("tick", &sim.tick_count().to_string()),
@@ -193,7 +194,7 @@ fn unlocked_buildings(reward: Reward) -> Vec<String> {
                 "port.notify.buildingKey"
             };
             let name = building_name(kind, Variant::Default);
-            Some(tf(template, &[("name", &name), ("key", key)]))
+            Some(tk_with(template, &[("name", &name), ("key", &key)]))
         })
         .collect()
 }

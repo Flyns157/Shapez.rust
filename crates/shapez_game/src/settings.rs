@@ -2,7 +2,10 @@
 //! langue, volumes des effets et de la musique, plein écran. Ils sont enregistrés en
 //! JSON à chaque changement.
 
-use std::path::{Path, PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 use bevy::{
     prelude::*,
@@ -30,6 +33,9 @@ pub struct Settings {
     pub theme: ThemeId,
     /// `enableColorBlindHelper`.
     pub color_blind: bool,
+    /// `keybindingOverrides` : identifiant JS de l'action → touche (`KeyW`…). Seules
+    /// les touches changées y figurent.
+    pub keybindings: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -43,6 +49,7 @@ impl Default for Settings {
             fullscreen: false,
             theme: ThemeId::Dark,
             color_blind: false,
+            keybindings: BTreeMap::new(),
         }
     }
 }
@@ -155,6 +162,7 @@ mod tests {
             fullscreen: true,
             theme: ThemeId::Light,
             color_blind: true,
+            keybindings: BTreeMap::from([("pipette".into(), "KeyH".into())]),
         };
         settings.save(&path).unwrap();
         assert_eq!(Settings::load(&path), settings);

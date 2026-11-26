@@ -56,3 +56,15 @@ jobs:
             - uses: EmbarkStudios/cargo-deny-action@v2
               with:
                   manifest-path: Cargo.toml
+
+    bench:
+        name: benchmarks de la simulation
+        # Sur `main` seulement (plan §9.3) : les machines partagées de la CI sont trop
+        # bruitées pour comparer une PR, mais l'historique des runs suit les tendances.
+        if: github.event_name == 'push'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+            - run: rustup show active-toolchain || rustup toolchain install
+            - uses: Swatinem/rust-cache@v2
+            - run: cargo bench -p shapez_sim --bench tick -- --warm-up-time 1 --measurement-time 3

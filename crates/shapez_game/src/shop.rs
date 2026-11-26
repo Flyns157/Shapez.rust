@@ -20,6 +20,7 @@ use crate::{
     AppState,
     camera::CameraSet,
     i18n::{decimal, t, tf, upgrade_name},
+    keybindings::{Action, just_pressed, tk},
     shape_textures::ShapeTextures,
     sim::Sim,
 };
@@ -179,9 +180,9 @@ fn panel_keys(
             panel
         };
     };
-    if keys.just_pressed(KeyCode::KeyF) {
+    if just_pressed(&keys, Action::MenuOpenShop) {
         toggle(&mut open, OpenPanel::Shop);
-    } else if keys.just_pressed(KeyCode::KeyG) {
+    } else if just_pressed(&keys, Action::MenuOpenStats) {
         toggle(&mut open, OpenPanel::Statistics);
     } else if keys.just_pressed(KeyCode::Escape) && open.is_open() {
         *open = OpenPanel::None;
@@ -376,7 +377,7 @@ fn update_shop(
         .despawn_children()
         .with_children(|p| {
             p.spawn(label(
-                format!("{} {}", t("ingame.shop.title"), t("port.shop.help")),
+                format!("{} {}", t("ingame.shop.title"), tk("port.shop.help")),
                 22.0,
                 Color::WHITE,
             ));
@@ -482,7 +483,7 @@ fn update_stats(
                     format!(
                         "{} {}",
                         t("ingame.statistics.title"),
-                        t("port.statistics.help")
+                        tk("port.statistics.help")
                     ),
                     22.0,
                     Color::WHITE,

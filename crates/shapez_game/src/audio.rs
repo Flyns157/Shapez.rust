@@ -193,7 +193,10 @@ fn play_music(
 ) {
     let wanted = match state.get() {
         AppState::InGame => Some(Track::Theme),
-        AppState::MainMenu | AppState::Settings | AppState::ShapeGallery => Some(Track::Menu),
+        AppState::MainMenu
+        | AppState::Settings
+        | AppState::Keybindings
+        | AppState::ShapeGallery => Some(Track::Menu),
         AppState::Boot | AppState::Loading => None,
     }
     .filter(|track| dir.0.join(track.file()).exists());

@@ -13,7 +13,8 @@ use shapez_sim::map::{CHUNK_SIZE, ChunkPos, ChunkResources, MapResource};
 
 use crate::{
     AppState,
-    camera::{TILE_SIZE, Zoom, world_to_tile},
+    camera::{MainCamera, TILE_SIZE, Zoom, world_to_tile},
+    screenshot::Exporting,
     settings::Settings,
     shape_textures::ShapeTextures,
     sim::Sim,
@@ -127,58 +128,68 @@ fn sync_visible_chunks(
     mut textures: ResMut<ShapeTextures>,
     zoom: Res<Zoom>,
     window: Single<&Window>,
-    camera: Single<&Transform, With<Camera2d>>,
+    camera: Single<&Transform, With<MainCamera>>,
     settings: Res<Settings>,
+    exporting: Option<Res<Exporting>>,
 ) {
     let half = Vec2::new(window.width(), window.height()) / (2.0 * zoom.0);
     let (min, max) = visible_range(camera.translation.truncate(), half);
     let theme = active(&settings);
     // Un changement de thème redessine tous les chunks.
     let retheme = settings.is_changed();
+    // Pendant un export, toute la base reste chargée.
+    let export = exporting.map(|e| e.area);
+    let wanted = |pos: &ChunkPos| {
+        ((min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y))
+            || export.is_some_and(|area| area.contains(*pos))
+    };
 
     visible.0.retain(|pos, entity| {
-        let keep = !retheme && (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y);
+        let keep = !retheme && wanted(pos);
         if !keep {
             commands.entity(*entity).despawn();
         }
         keep
     });
 
-    let overview = zoom.is_overview();
-    for cx in min.x..=max.x {
-        for cy in min.y..=max.y {
-            let pos = ChunkPos::new(cx, cy);
-            if visible.0.contains_key(&pos) {
-                continue;
-            }
-            let chunk = sim.map.chunk(pos).clone();
-            let background = images.add(chunk_image(&chunk, false, theme));
-            let overview_image = images.add(chunk_image(&chunk, true, theme));
-            let origin = pos.origin();
-            let center = Vec2::new(
-                (origin.x as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
-                -(origin.y as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
-            );
-
-            let mut entity = commands.spawn((
-                ChunkView {
-                    background: background.clone(),
-                    overview: overview_image.clone(),
-                },
-                Sprite {
-                    image: if overview { overview_image } else { background },
-                    custom_size: Some(Vec2::splat(CHUNK_WORLD_SIZE)),
-                    ..default()
-                },
-                Transform::from_translation(center.extend(0.0)),
-            ));
-            if !chunk.is_empty() {
-                entity.with_children(|parent| {
-                    spawn_resource_icons(parent, &chunk, &mut textures, &mut images, overview);
-                });
-            }
-            visible.0.insert(pos, entity.id());
+    let overview = zoom.is_overview() && export.is_none();
+    let screen =
+        (min.x..=max.x).flat_map(|cx| (min.y..=max.y).map(move |cy| ChunkPos::new(cx, cy)));
+    let exported = export.into_iter().flat_map(|area| {
+        (area.min.x..area.max.x)
+            .flat_map(move |cx| (area.min.y..area.max.y).map(move |cy| ChunkPos::new(cx, cy)))
+    });
+    for pos in screen.chain(exported) {
+        if visible.0.contains_key(&pos) {
+            continue;
         }
+        let chunk = sim.map.chunk(pos).clone();
+        let background = images.add(chunk_image(&chunk, false, theme));
+        let overview_image = images.add(chunk_image(&chunk, true, theme));
+        let origin = pos.origin();
+        let center = Vec2::new(
+            (origin.x as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
+            -(origin.y as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
+        );
+
+        let mut entity = commands.spawn((
+            ChunkView {
+                background: background.clone(),
+                overview: overview_image.clone(),
+            },
+            Sprite {
+                image: if overview { overview_image } else { background },
+                custom_size: Some(Vec2::splat(CHUNK_WORLD_SIZE)),
+                ..default()
+            },
+            Transform::from_translation(center.extend(0.0)),
+        ));
+        if !chunk.is_empty() {
+            entity.with_children(|parent| {
+                spawn_resource_icons(parent, &chunk, &mut textures, &mut images, overview);
+            });
+        }
+        visible.0.insert(pos, entity.id());
     }
 }
 
@@ -240,12 +251,13 @@ fn spawn_resource_icons(
 /// Bascule entre vue normale et vue d'ensemble quand le zoom franchit le seuil.
 fn apply_overview(
     zoom: Res<Zoom>,
+    exporting: Option<Res<Exporting>>,
     mut chunks: Query<(&ChunkView, &mut Sprite)>,
     mut icons: Query<&mut Visibility, (With<ResourceIcon>, Without<PatchIcon>)>,
     mut patches: Query<&mut Visibility, (With<PatchIcon>, Without<ResourceIcon>)>,
     mut was_overview: Local<Option<bool>>,
 ) {
-    let overview = zoom.is_overview();
+    let overview = zoom.is_overview() && exporting.is_none();
     if *was_overview == Some(overview) {
         return;
     }
@@ -271,10 +283,12 @@ fn draw_grid(
     mut gizmos: Gizmos,
     zoom: Res<Zoom>,
     window: Single<&Window>,
-    camera: Single<&Transform, With<Camera2d>>,
+    camera: Single<&Transform, With<MainCamera>>,
     settings: Res<Settings>,
+    exporting: Option<Res<Exporting>>,
 ) {
-    if zoom.is_overview() {
+    // L'image exportée n'a pas de grille, comme dans le JS.
+    if zoom.is_overview() || exporting.is_some() {
         return;
     }
     let half = Vec2::new(window.width(), window.height()) / (2.0 * zoom.0);
