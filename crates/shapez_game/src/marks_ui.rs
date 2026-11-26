@@ -16,7 +16,7 @@ use shapez_sim::{
 
 use crate::{
     AppState,
-    camera::{Zoom, tile_to_world, world_to_tile},
+    camera::{MainCamera, Zoom, tile_to_world, world_to_tile},
     editing_ui::letter,
     i18n::t,
     shape_textures::ShapeTextures,
@@ -74,7 +74,7 @@ fn add_waypoint(
     keys: Res<ButtonInput<KeyCode>>,
     letters: Res<ButtonInput<Key>>,
     zoom: Res<Zoom>,
-    camera: Single<&Transform, With<Camera2d>>,
+    camera: Single<&Transform, With<MainCamera>>,
     mut sim: ResMut<Sim>,
 ) {
     let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
@@ -98,7 +98,7 @@ fn on_activate(
     keys: Res<ButtonInput<KeyCode>>,
     sim: Option<ResMut<Sim>>,
     mut zoom: ResMut<Zoom>,
-    mut camera: Query<&mut Transform, With<Camera2d>>,
+    mut camera: Query<&mut Transform, With<MainCamera>>,
 ) {
     let Some(mut sim) = sim else {
         return;

@@ -42,6 +42,10 @@ pub fn world_to_tile(world: Vec2) -> Vec2 {
     Vec2::new(world.x / TILE_SIZE, -world.y / TILE_SIZE)
 }
 
+/// La caméra de jeu, qui suit le joueur ; l'export de la base en a une autre.
+#[derive(Component, Debug, Default)]
+pub struct MainCamera;
+
 /// Systèmes de la caméra ; le rendu de la carte passe après.
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CameraSet;
@@ -65,7 +69,7 @@ impl Plugin for CameraPlugin {
 }
 
 /// Au départ, la caméra est centrée sur la tuile (-5, 2) comme dans `core.js`.
-fn reset_camera(mut zoom: ResMut<Zoom>, mut camera: Query<&mut Transform, With<Camera2d>>) {
+fn reset_camera(mut zoom: ResMut<Zoom>, mut camera: Query<&mut Transform, With<MainCamera>>) {
     zoom.0 = 1.0;
     for mut t in &mut camera {
         t.translation = tile_to_world(-5.0, 2.0).extend(0.0);
@@ -76,7 +80,7 @@ fn keyboard_pan(
     keys: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
     zoom: Res<Zoom>,
-    mut camera: Single<&mut Transform, With<Camera2d>>,
+    mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
     // Ctrl+lettre est un raccourci (annuler, copier…), pas un déplacement.
     if keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
@@ -106,7 +110,7 @@ fn drag_pan(
     buttons: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     zoom: Res<Zoom>,
-    mut camera: Single<&mut Transform, With<Camera2d>>,
+    mut camera: Single<&mut Transform, With<MainCamera>>,
 ) {
     if buttons.any_pressed([MouseButton::Middle, MouseButton::Right]) && motion.delta != Vec2::ZERO
     {
@@ -120,7 +124,7 @@ fn wheel_zoom(
     mut wheel: MessageReader<MouseWheel>,
     mut zoom: ResMut<Zoom>,
     window: Single<&Window>,
-    camera: Single<(&Camera, &GlobalTransform, &mut Transform), With<Camera2d>>,
+    camera: Single<(&Camera, &GlobalTransform, &mut Transform), With<MainCamera>>,
 ) {
     let steps: f32 = wheel
         .read()
@@ -150,7 +154,7 @@ fn wheel_zoom(
     }
 }
 
-fn apply_zoom(zoom: Res<Zoom>, mut projection: Single<&mut Projection, With<Camera2d>>) {
+fn apply_zoom(zoom: Res<Zoom>, mut projection: Single<&mut Projection, With<MainCamera>>) {
     if let Projection::Orthographic(ortho) = projection.as_mut()
         && ortho.scale != 1.0 / zoom.0
     {

@@ -55,7 +55,7 @@ impl Editor {
         !self.selection.is_empty() || self.blueprint.is_some() || self.select_start.is_some()
     }
 
-    fn say(&mut self, text: impl Into<String>) {
+    pub(crate) fn say(&mut self, text: impl Into<String>) {
         self.message = Some((
             text.into(),
             Timer::from_seconds(MESSAGE_SECONDS, TimerMode::Once),
