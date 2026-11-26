@@ -1,7 +1,7 @@
 //! Rendu de la carte par chunk : fond, ressources et vue d'ensemble au dézoom
 //! (port de `systems/map_resources.js` et `map_chunk_view.js`).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use bevy::{
     asset::RenderAssetUsages,
@@ -9,7 +9,12 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
-use shapez_sim::map::{CHUNK_SIZE, ChunkPos, ChunkResources, MapResource};
+use shapez_core::TilePos;
+use shapez_sim::{
+    building::Layer,
+    map::{CHUNK_SIZE, ChunkPos, ChunkResources, MapResource},
+    placement::{Buildings, SimEvent},
+};
 
 use crate::{
     AppState,
@@ -17,7 +22,8 @@ use crate::{
     screenshot::Exporting,
     settings::Settings,
     shape_textures::ShapeTextures,
-    sim::Sim,
+    silhouettes::{self, OVERLAY_RES},
+    sim::{Sim, SimEventMsg, SimEventsSet},
     theme::{Theme, active},
 };
 
@@ -33,6 +39,7 @@ struct VisibleChunks(HashMap<ChunkPos, Entity>);
 /// Entité d'un chunk ; porte les deux images (normale et vue d'ensemble).
 #[derive(Component, Debug)]
 struct ChunkView {
+    pos: ChunkPos,
     background: Handle<Image>,
     overview: Handle<Image>,
 }
@@ -54,39 +61,102 @@ impl Plugin for MapRenderPlugin {
             .add_systems(OnExit(AppState::InGame), despawn_all_chunks)
             .add_systems(
                 Update,
-                (sync_visible_chunks, apply_overview, draw_grid)
+                (
+                    sync_visible_chunks,
+                    refresh_overviews,
+                    apply_overview,
+                    draw_grid,
+                )
                     .chain()
                     .after(crate::camera::CameraSet)
+                    .after(SimEventsSet)
                     .run_if(in_state(AppState::InGame)),
             );
     }
 }
 
-/// Image 16 × 16 (un pixel par tuile) : ressources à 50 % d'opacité, ou opaques sur
-/// le fond `chunkOverview.empty` pour la vue d'ensemble.
-fn chunk_image(chunk: &ChunkResources, overview: bool, theme: &Theme) -> Image {
+/// Image 16 × 16 (un pixel par tuile) : ressources à 50 % d'opacité.
+fn chunk_image(chunk: &ChunkResources, theme: &Theme) -> Image {
     let n = CHUNK_SIZE as usize;
     let mut data = Vec::with_capacity(n * n * 4);
     for y in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
-            let px = match (chunk.get(x, y), overview) {
-                (Some(r), true) => {
-                    let [r, g, b] = theme.resource_color(r);
-                    [r, g, b, 0xff]
-                }
-                (Some(r), false) => {
+            let px = match chunk.get(x, y) {
+                Some(r) => {
                     let [r, g, b] = theme.resource_color(r);
                     [r, g, b, 0x80]
                 }
-                (None, true) => {
-                    let [r, g, b] = theme.overview_empty;
-                    [r, g, b, 0xff]
-                }
-                (None, false) => [0, 0, 0, 0],
+                None => [0, 0, 0, 0],
             };
             data.extend_from_slice(&px);
         }
     }
+    rgba_image(n, data)
+}
+
+/// Vue d'ensemble d'un chunk (`generateOverlayBuffer`), 3 × 3 pixels par tuile : fond
+/// `chunkOverview.empty`, ou `filled` s'il contient un bâtiment, ressources opaques,
+/// puis silhouettes des bâtiments de la couche normale.
+fn overview_image(
+    chunk: &ChunkResources,
+    pos: ChunkPos,
+    buildings: &Buildings,
+    theme: &Theme,
+) -> Image {
+    let n = CHUNK_SIZE as usize * OVERLAY_RES;
+    let origin = pos.origin();
+    let tile = |x: i32, y: i32| TilePos::new(origin.x + x, origin.y + y);
+    let tiles = || (0..CHUNK_SIZE).flat_map(|y| (0..CHUNK_SIZE).map(move |x| (x, y)));
+    let filled = tiles().any(|(x, y)| buildings.contents_at(tile(x, y)).next().is_some());
+    let [r, g, b] = if filled {
+        theme.overview_filled
+    } else {
+        theme.overview_empty
+    };
+    let mut data: Vec<u8> = [r, g, b, 0xff].repeat(n * n);
+    let mut paint = |px: usize, py: usize, [r, g, b]: [u8; 3]| {
+        let i = (py * n + px) * 4;
+        data[i..i + 4].copy_from_slice(&[r, g, b, 0xff]);
+    };
+    for (x, y) in tiles() {
+        let (px, py) = (x as usize * OVERLAY_RES, y as usize * OVERLAY_RES);
+        let fill = |color: [u8; 3], paint: &mut dyn FnMut(usize, usize, [u8; 3])| {
+            for dy in 0..OVERLAY_RES {
+                for dx in 0..OVERLAY_RES {
+                    paint(px + dx, py + dy, color);
+                }
+            }
+        };
+        let resource = chunk.get(x, y).map(|r| theme.resource_color(r));
+        match buildings.building_at_layer(tile(x, y), Layer::Regular) {
+            Some((_, building)) => {
+                let color = silhouettes::color(building, theme);
+                match silhouettes::matrix(building) {
+                    Some(matrix) => {
+                        // La ressource « transparaît » sous le motif.
+                        if let Some(resource) = resource {
+                            fill(resource, &mut paint);
+                        }
+                        for (k, &on) in matrix.iter().enumerate() {
+                            if on != 0 {
+                                paint(px + k % OVERLAY_RES, py + k / OVERLAY_RES, color);
+                            }
+                        }
+                    }
+                    None => fill(color, &mut paint),
+                }
+            }
+            None => {
+                if let Some(resource) = resource {
+                    fill(resource, &mut paint);
+                }
+            }
+        }
+    }
+    rgba_image(n, data)
+}
+
+fn rgba_image(n: usize, data: Vec<u8>) -> Image {
     let mut image = Image::new(
         Extent3d {
             width: n as u32,
@@ -103,7 +173,7 @@ fn chunk_image(chunk: &ChunkResources, overview: bool, theme: &Theme) -> Image {
 }
 
 /// Chunks qui recouvrent l'écran (plus une marge).
-fn visible_range(camera_pos: Vec2, half_extent: Vec2) -> (ChunkPos, ChunkPos) {
+pub(crate) fn visible_range(camera_pos: Vec2, half_extent: Vec2) -> (ChunkPos, ChunkPos) {
     let min = world_to_tile(camera_pos + Vec2::new(-half_extent.x, half_extent.y));
     let max = world_to_tile(camera_pos + Vec2::new(half_extent.x, -half_extent.y));
     let to_chunk = |t: f32| (t / CHUNK_SIZE as f32).floor() as i32;
@@ -164,8 +234,8 @@ fn sync_visible_chunks(
             continue;
         }
         let chunk = sim.map.chunk(pos).clone();
-        let background = images.add(chunk_image(&chunk, false, theme));
-        let overview_image = images.add(chunk_image(&chunk, true, theme));
+        let background = images.add(chunk_image(&chunk, theme));
+        let overview_image = images.add(overview_image(&chunk, pos, &sim.buildings, theme));
         let origin = pos.origin();
         let center = Vec2::new(
             (origin.x as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
@@ -174,6 +244,7 @@ fn sync_visible_chunks(
 
         let mut entity = commands.spawn((
             ChunkView {
+                pos,
                 background: background.clone(),
                 overview: overview_image.clone(),
             },
@@ -245,6 +316,40 @@ fn spawn_resource_icons(
                 over,
             ));
         }
+    }
+}
+
+/// Redessine la vue d'ensemble des chunks chargés dont un bâtiment a changé.
+fn refresh_overviews(
+    mut events: MessageReader<SimEventMsg>,
+    mut sim: ResMut<Sim>,
+    settings: Res<Settings>,
+    chunks: Query<&ChunkView>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let mut dirty = HashSet::new();
+    for SimEventMsg(event) in events.read() {
+        if let SimEvent::BuildingPlaced { building, .. }
+        | SimEvent::BuildingChanged { building, .. }
+        | SimEvent::BuildingRemoved { building, .. } = event
+        {
+            let (min, (w, h)) = building.bounds();
+            let chunk = |t: i32| t.div_euclid(CHUNK_SIZE);
+            for cx in chunk(min.x)..=chunk(min.x + w - 1) {
+                for cy in chunk(min.y)..=chunk(min.y + h - 1) {
+                    dirty.insert(ChunkPos::new(cx, cy));
+                }
+            }
+        }
+    }
+    if dirty.is_empty() {
+        return;
+    }
+    let theme = active(&settings);
+    for view in chunks.iter().filter(|v| dirty.contains(&v.pos)) {
+        let chunk = sim.map.chunk(view.pos).clone();
+        let image = overview_image(&chunk, view.pos, &sim.buildings, theme);
+        let _ = images.insert(&view.overview, image);
     }
 }
 
