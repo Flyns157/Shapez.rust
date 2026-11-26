@@ -12,9 +12,12 @@ port:
         selection: "Selection: <count> buildings - Del/X = delete, B = clear items, Ctrl+C = copy, Ctrl+X = cut, Esc = cancel"
         placing: <variant> - rotation <degrees>° (R, T = variant, Q = pipette, X/right click = delete)
         wiresHelp: E = regular layer, click a constant signal = change its value, click a lever = toggle, Q = pipette, X/right click = delete
-        help: Q = pipette, X/right click = delete, Ctrl+drag = select, Ctrl+Z/Y = undo/redo, Ctrl+V = paste, M = marker, F = upgrades, G = statistics
+        help: Q = pipette, X/right click = delete, Ctrl+drag = select, Ctrl+Z/Y = undo/redo, Ctrl+V = paste, M = marker, F = upgrades, G = statistics, F3 = export base
         helpWires: ", E = wires layer"
     notify:
+        screenshotStarted: "Exporting the base…"
+        screenshotSaved: "Base exported: <path>"
+        screenshotFailed: "Could not export the base to <path>"
         newBuildings: "New: <list>"
         buildingKey: <name> (key <key>)
         buildingKeyWires: <name> (key <key>, wires layer with E)

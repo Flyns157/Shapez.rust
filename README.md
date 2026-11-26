@@ -296,6 +296,7 @@ Toutes sont facultatives.
 | `SHAPEZ_SAVE_DIR` | le jeu | Dossier des sauvegardes | voir [Sauvegardes](#sauvegardes) |
 | `SHAPEZ_SANDBOX` | le jeu | Si elle est définie (par exemple `SHAPEZ_SANDBOX=1`), les nouvelles parties démarrent en bac à sable : tous les bâtiments et variantes débloqués, et 1 000 000 formes de plan en stock pour tester le copier-coller | désactivé |
 | `SHAPEZ_SETTINGS` | le jeu | Fichier des paramètres | voir [Paramètres](#paramètres) |
+| `SHAPEZ_SCREENSHOT_DIR` | le jeu | Dossier des exports de la base (F3) | voir [Paramètres](#paramètres) |
 | `SHAPEZ_LANG` | le jeu | Langue de l'interface : `fr`, `de`, `pt-BR`… (identifiants du jeu d'origine, ou code de langue comme `fr_FR`). Elle passe avant la langue choisie dans les [paramètres](#paramètres), qui passe elle-même avant la langue du système (`LC_ALL`, `LC_MESSAGES`, `LANG`). Le chinois, le japonais, le coréen, le russe, l'ukrainien et l'hébreu demandent les polices Noto importées par `cargo xtask import-assets --fonts` ; sans elles, ces langues retombent sur l'anglais | langue du système, sinon anglais |
 | `SHAPEZ_SEED` | le jeu | Graine des nouvelles parties, de 0 à 100 000, pour obtenir toujours la même carte | aléatoire |
 | `SHAPEZ_GOLDEN_SHAPES`, `SHAPEZ_GOLDEN_BELTS` | tests | Fichier de vecteurs de test plus grand à vérifier (voir [Oracle JS](#oracle-js)) | fichiers de `tests/golden/` |
@@ -328,6 +329,11 @@ Le thème change les couleurs de la carte en partie (fond, grille, gisements) et
 posé dessus ; les menus restent sombres. L'aide daltonien affiche le nom de la couleur
 sous le curseur (item d'un convoyeur, item en sortie d'un bâtiment, ou gisement) et
 entoure la tuile, comme dans le jeu d'origine.
+
+En partie, **F3** exporte toute la base en PNG, comme le jeu d'origine : l'image couvre
+tous les bâtiments (128 pixels par chunk, moins pour une très grande base). Elle est écrite
+dans le dossier `screenshots` du dossier de données (à côté des sauvegardes), ou dans
+celui indiqué par `SHAPEZ_SCREENSHOT_DIR`.
 
 Les paramètres sont enregistrés à chaque changement dans `settings.json`, dans le dossier
 de configuration de la plateforme, ou dans le fichier indiqué par `SHAPEZ_SETTINGS` :

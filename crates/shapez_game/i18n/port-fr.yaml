@@ -10,9 +10,12 @@ port:
         selection: "Sélection : <count> bâtiments - Suppr/X = supprimer, B = vider, Ctrl+C = copier, Ctrl+X = couper, Échap = annuler"
         placing: <variant> - rotation <degrees>° (R, T = variante, Q = pipette, X/clic droit = supprimer)
         wiresHelp: E = couche normale, clic sur un signal constant = changer sa valeur, clic sur un levier = basculer, Q = pipette, X/clic droit = supprimer
-        help: Q = pipette, X/clic droit = supprimer, Ctrl+glisser = sélectionner, Ctrl+Z/Y = annuler/rétablir, Ctrl+V = coller, M = repère, F = améliorations, G = statistiques
+        help: Q = pipette, X/clic droit = supprimer, Ctrl+glisser = sélectionner, Ctrl+Z/Y = annuler/rétablir, Ctrl+V = coller, M = repère, F = améliorations, G = statistiques, F3 = exporter la base
         helpWires: ", E = couche câbles"
     notify:
+        screenshotStarted: "Export de la base en cours…"
+        screenshotSaved: "Base exportée : <path>"
+        screenshotFailed: "Échec de l'export de la base vers <path>"
         newBuildings: "Nouveau : <list>"
         buildingKey: <name> (touche <key>)
         buildingKeyWires: <name> (touche <key>, couche câbles avec E)

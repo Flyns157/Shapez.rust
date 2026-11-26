@@ -14,7 +14,7 @@ use shapez_sim::{
 use crate::{
     AppState,
     buildings_view::building_sprite,
-    camera::{CameraSet, world_to_tile},
+    camera::{CameraSet, MainCamera, world_to_tile},
     editing_ui::{EditingSet, Editor},
     i18n::{building_name, t, tf},
     shop::OpenPanel,
@@ -164,7 +164,7 @@ impl Plugin for PlacementUiPlugin {
 fn track_cursor(
     mut state: ResMut<PlacementState>,
     window: Single<&Window>,
-    camera: Single<(&Camera, &GlobalTransform), With<Camera2d>>,
+    camera: Single<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
     let (camera, global) = *camera;
     state.cursor_tile = window
