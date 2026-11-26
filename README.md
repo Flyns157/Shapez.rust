@@ -16,6 +16,7 @@ complet du projet est dans [`docs/plan-rust-bevy.md`](docs/plan-rust-bevy.md).
     - [Raccourcis de construction](#raccourcis-de-construction)
   - [6. Lancer les tests](#6-lancer-les-tests)
 - [Distribuer le jeu](#distribuer-le-jeu)
+  - [Version web](#version-web)
 - [Compiler pour Windows depuis Linux](#compiler-pour-windows-depuis-linux)
 - [Variables d'environnement](#variables-denvironnement)
 - [Sauvegardes](#sauvegardes)
@@ -293,16 +294,38 @@ Sous Linux, le binaire a besoin des bibliothèques ALSA et udev du système (`li
 `libudev1`), présentes sur la plupart des distributions de bureau.
 
 Le workflow GitHub **Release** (`.github/workflows/release.yml`) fait la même chose pour
-Linux x86_64, Windows x86_64 et macOS (Apple Silicon et Intel) :
+Linux x86_64, Windows x86_64, macOS (Apple Silicon et Intel) et le web :
 
-- lancé à la main depuis l'onglet Actions (« Run workflow »), il produit les quatre
+- lancé à la main depuis l'onglet Actions (« Run workflow »), il produit les cinq
   archives comme artefacts du run ;
 - sur un tag `v*` (`git tag v0.1.0 && git push origin v0.1.0`), il les joint en plus à
   une release GitHub **en brouillon**, à relire puis publier depuis l'onglet Releases.
 
-La CI vérifie aussi que le jeu compile pour le web (`wasm32-unknown-unknown`). La version
-web jouable n'est pas encore là : les traductions, les polices, les paramètres et les
-sauvegardes sont lus avec `std::fs`, absent du navigateur.
+### Version web
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.130   # la version de wasm-bindgen dans Cargo.lock
+cargo xtask web
+cd target/packages/shapez-rs-0.1.0-web && python3 -m http.server 8000
+```
+
+puis ouvrir <http://localhost:8000>. Le dossier contient `index.html`, `shapez.js`,
+`shapez_bg.wasm` (environ 50 Mo) et `assets/`. N'importe quel hébergement statique convient
+(GitHub Pages, par exemple), mais pas l'ouverture directe du fichier : le jeu télécharge
+ses assets par HTTP.
+
+Différences avec la version de bureau :
+
+- la langue par défaut est celle du navigateur ;
+- les paramètres et les sauvegardes sont dans le `localStorage` du navigateur, propre au
+  site, et limité à environ 5 Mo : une très grande usine peut ne plus pouvoir être
+  sauvegardée (l'erreur s'affiche alors en jeu) ;
+- les navigateurs n'autorisent le son qu'après une première interaction avec la page ;
+- le rendu passe par WebGL 2 : il est nettement plus lent que la version de bureau.
+
+Le workflow **Release** produit aussi cette archive (`shapez-rs-<version>-web.zip`), et la
+CI vérifie à chaque PR que le jeu compile pour `wasm32-unknown-unknown`.
 
 ### Mesurer les performances
 

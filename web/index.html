@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>shapez-rs</title>
+    <style>
+        html, body { margin: 0; height: 100%; background: #3f3f49; overflow: hidden; }
+        #game { display: block; width: 100%; height: 100%; outline: none; }
+        #loading {
+            position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+            color: #ddd; font: 18px system-ui, sans-serif; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="game" tabindex="0"></canvas>
+    <div id="loading">Chargement…</div>
+    <script type="module">
+        // Généré par `cargo xtask web` (wasm-bindgen --target web).
+        import init from "./shapez.js";
+        // Le clic droit sert au jeu (supprimer, annuler) : pas de menu contextuel.
+        document.getElementById("game").addEventListener("contextmenu", (e) => e.preventDefault());
+        init().then(
+            () => document.getElementById("loading").remove(),
+            (e) => {
+                // Bevy quitte `init` par une exception de contrôle de winit : ce n'est pas une erreur.
+                if (String(e).includes("Using exceptions for control flow")) {
+                    document.getElementById("loading").remove();
+                } else {
+                    document.getElementById("loading").textContent = "Erreur : " + e;
+                    throw e;
+                }
+            },
+        );
+    </script>
+</body>
+</html>
