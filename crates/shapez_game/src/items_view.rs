@@ -1,15 +1,21 @@
 //! Rendu des items sur les convoyeurs et en sortie de bâtiment.
 //!
+//! Seuls les items à l'écran sont demandés à la simulation, et aucun en vue d'ensemble
+//! (le JS ne les dessine pas non plus à ce zoom) : le coût suit l'écran, pas l'usine.
+//! Pendant l'export de la base (F3), c'est toute la zone exportée.
+//!
 //! Un réservoir de sprites est réutilisé d'une image à l'autre : on n'en crée que
 //! lorsque le nombre d'items visibles augmente.
 
 use bevy::prelude::*;
-use shapez_core::Item;
+use shapez_core::{Item, TilePos};
+use shapez_sim::map::CHUNK_SIZE;
 
 use crate::{
     AppState,
     buildings_view::ITEM_Z,
-    camera::{TILE_SIZE, tile_to_world},
+    camera::{MainCamera, TILE_SIZE, Zoom, tile_to_world, world_to_tile},
+    screenshot::Exporting,
     shape_textures::ShapeTextures,
     sim::Sim,
 };
@@ -34,6 +40,7 @@ impl Plugin for ItemsViewPlugin {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_items(
     mut commands: Commands,
     sim: Res<Sim>,
@@ -41,8 +48,22 @@ fn draw_items(
     mut textures: ResMut<ShapeTextures>,
     mut images: ResMut<Assets<Image>>,
     mut sprites: Query<(&mut Sprite, &mut Transform, &mut Visibility), With<ItemSprite>>,
+    zoom: Res<Zoom>,
+    window: Single<&Window>,
+    camera: Single<&Transform, (With<MainCamera>, Without<ItemSprite>)>,
+    exporting: Option<Res<Exporting>>,
 ) {
-    let items = sim.factory.visible_items(&sim.buildings);
+    let items = if let Some(export) = exporting {
+        let area = &export.area;
+        let min = TilePos::new(area.min.x * CHUNK_SIZE, area.min.y * CHUNK_SIZE);
+        let max = TilePos::new(area.max.x * CHUNK_SIZE - 1, area.max.y * CHUNK_SIZE - 1);
+        sim.factory.visible_items_in(&sim.buildings, min, max)
+    } else if zoom.is_overview() {
+        Vec::new()
+    } else {
+        let (min, max) = screen_tiles(camera.translation.truncate(), &window, zoom.0);
+        sim.factory.visible_items_in(&sim.buildings, min, max)
+    };
     for (i, visible) in items.iter().enumerate() {
         let image = match visible.item {
             Item::Shape(id) => textures.get_or_render(*sim.registry.get(id), &mut images),
@@ -83,6 +104,18 @@ fn draw_items(
             *visibility = Visibility::Hidden;
         }
     }
+}
+
+/// Tuiles à l'écran, plus une de marge : un item dépasse un peu de son convoyeur.
+fn screen_tiles(center: Vec2, window: &Window, zoom: f32) -> (TilePos, TilePos) {
+    let half = Vec2::new(window.width(), window.height()) / (2.0 * zoom);
+    let a = world_to_tile(center - half);
+    let b = world_to_tile(center + half);
+    let (lo, hi) = (a.min(b), a.max(b));
+    (
+        TilePos::new(lo.x.floor() as i32 - 1, lo.y.floor() as i32 - 1),
+        TilePos::new(hi.x.ceil() as i32 + 1, hi.y.ceil() as i32 + 1),
+    )
 }
 
 fn clear_pool(mut commands: Commands, mut pool: ResMut<ItemPool>) {

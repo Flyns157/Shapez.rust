@@ -85,6 +85,7 @@ fn start_world(mut commands: Commands, mut next: ResMut<NextGame>) {
             if std::env::var_os("SHAPEZ_SANDBOX").is_some() {
                 sandbox(&mut world);
             }
+            stress(&mut world);
             commands.insert_resource(Sim(world));
         }
         NextGame::Load { name, world } => {
@@ -92,6 +93,19 @@ fn start_world(mut commands: Commands, mut next: ResMut<NextGame>) {
             commands.insert_resource(CurrentSave(name));
         }
     }
+}
+
+/// Usine de charge (`SHAPEZ_STRESS=<tuiles>`), pour profiler le rendu : des anneaux de
+/// convoyeurs chargés d'items, à droite du hub.
+fn stress(world: &mut SimWorld) {
+    let Some(tiles) = std::env::var("SHAPEZ_STRESS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+    else {
+        return;
+    };
+    info!("usine de charge : {tiles} tuiles de convoyeur");
+    shapez_sim::stress::add_rings(world, shapez_core::TilePos::new(4, -12), tiles);
 }
 
 /// Bac à sable de développement (`SHAPEZ_SANDBOX=1`) : toutes les récompenses de
