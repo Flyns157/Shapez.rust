@@ -35,8 +35,10 @@ pub struct Language {
     pub code: &'static str,
     /// Fichier `base-<file>.yaml`.
     pub file: &'static str,
-    /// Écriture couverte par la police du jeu (Barlow, alphabet latin seulement).
-    pub latin: bool,
+    /// Police Noto complétant celle du jeu (Barlow, alphabet latin seulement) pour les
+    /// autres écritures : fichier de `assets/fonts-noto/`, téléchargé par
+    /// `cargo xtask import-assets --fonts`.
+    pub font: Option<&'static str>,
 }
 
 const fn lang(
@@ -50,29 +52,30 @@ const fn lang(
         name,
         code,
         file,
-        latin: true,
+        font: None,
     }
 }
 
-const fn non_latin(
-    id: &'static str,
-    name: &'static str,
-    code: &'static str,
-    file: &'static str,
-) -> Language {
+const fn with_font(language: Language, font: &'static str) -> Language {
     Language {
-        latin: false,
-        ..lang(id, name, code, file)
+        font: Some(font),
+        ..language
     }
 }
 
 /// Les langues du jeu d'origine, dans son ordre.
 pub const LANGUAGES: [Language; 24] = [
     lang("en", "English", "en", "en"),
-    non_latin("zh-CN", "简体中文", "zh", "zh-CN"),
-    non_latin("zh-TW", "繁體中文", "zh", "zh-TW"),
-    non_latin("ja", "日本語", "ja", "ja"),
-    non_latin("kor", "한국어", "ko", "kor"),
+    with_font(
+        lang("zh-CN", "简体中文", "zh", "zh-CN"),
+        "NotoSansSC-Regular.otf",
+    ),
+    with_font(
+        lang("zh-TW", "繁體中文", "zh", "zh-TW"),
+        "NotoSansTC-Regular.otf",
+    ),
+    with_font(lang("ja", "日本語", "ja", "ja"), "NotoSansJP-Regular.otf"),
+    with_font(lang("kor", "한국어", "ko", "kor"), "NotoSansKR-Regular.otf"),
     lang("cs", "Čeština", "cs", "cz"),
     lang("da", "Dansk", "da", "da"),
     lang("de", "Deutsch", "de", "de"),
@@ -86,12 +89,15 @@ pub const LANGUAGES: [Language; 24] = [
     lang("pt-PT", "Português", "pt", "pt-PT"),
     lang("pt-BR", "Português - Brasil", "pt-BR", "pt-BR"),
     lang("ro", "Română", "ro", "ro"),
-    non_latin("ru", "Русский", "ru", "ru"),
+    with_font(lang("ru", "Русский", "ru", "ru"), "NotoSans-Regular.ttf"),
     lang("fi", "Suomi", "fi", "fi"),
     lang("sv", "Svenska", "sv", "sv"),
     lang("tr", "Türkçe", "tr", "tr"),
-    non_latin("uk", "Українська", "uk", "uk"),
-    non_latin("he", "עברית", "he", "he"),
+    with_font(lang("uk", "Українська", "uk", "uk"), "NotoSans-Regular.ttf"),
+    with_font(
+        lang("he", "עברית", "he", "he"),
+        "NotoSansHebrew-Regular.ttf",
+    ),
 ];
 
 /// Textes propres au portage, embarqués dans le binaire.
@@ -266,23 +272,26 @@ pub fn language_for_code(code: &str) -> Option<Language> {
 }
 
 /// Langue demandée : `SHAPEZ_LANG`, puis la langue du système (`LC_ALL`,
-/// `LC_MESSAGES`, `LANG`), puis l'anglais. Les langues non latines retombent pour
-/// l'instant sur l'anglais, faute de police.
+/// `LC_MESSAGES`, `LANG`), puis l'anglais.
 pub fn detect_language() -> Language {
-    let wanted = ["SHAPEZ_LANG", "LC_ALL", "LC_MESSAGES", "LANG"]
+    ["SHAPEZ_LANG", "LC_ALL", "LC_MESSAGES", "LANG"]
         .iter()
         .filter_map(|var| std::env::var(var).ok())
-        .find_map(|code| language_for_code(&code));
-    match wanted {
-        Some(lang) if lang.latin => lang,
-        Some(lang) => {
-            warn!(
-                "langue {} pas encore prise en charge (police manquante) : anglais utilisé",
-                lang.id
-            );
-            LANGUAGES[0]
+        .find_map(|code| language_for_code(&code))
+        .unwrap_or(LANGUAGES[0])
+}
+
+/// Polices utilisées pour tous les textes : celle du jeu, puis la police Noto de la
+/// langue pour les caractères qu'elle n'a pas (repli caractère par caractère).
+#[derive(Resource, Debug, Clone)]
+pub struct UiFonts(pub FontSource);
+
+/// Remplace la police par défaut des textes créés par la pile [`UiFonts`].
+fn apply_ui_fonts(fonts: Res<UiFonts>, mut texts: Query<&mut TextFont, Added<TextFont>>) {
+    for mut text in &mut texts {
+        if text.font == FontSource::default() {
+            text.font = fonts.0.clone();
         }
-        None => LANGUAGES[0],
     }
 }
 
@@ -436,7 +445,23 @@ pub struct I18nPlugin {
 impl Plugin for I18nPlugin {
     fn build(&self, app: &mut App) {
         let dir = Path::new(&self.asset_dir);
-        let language = detect_language();
+        let mut language = detect_language();
+        // Police complémentaire de la langue, chargée directement : elle doit être prête
+        // avant le premier texte.
+        let extra = language.font.map(|file| dir.join("fonts-noto").join(file));
+        let extra = match extra.map(|path| (std::fs::read(&path), path)) {
+            Some((Ok(bytes), _)) => Some(bytes),
+            Some((Err(e), path)) => {
+                warn!(
+                    "police {} introuvable ({e}) : anglais utilisé ; lancez \
+                     `cargo xtask import-assets --fonts`",
+                    path.display()
+                );
+                language = LANGUAGES[0];
+                None
+            }
+            None => None,
+        };
         info!("langue : {} ({})", language.name, language.id);
         set_translations(Translations::load(&dir.join("i18n"), language));
 
@@ -452,6 +477,21 @@ impl Plugin for I18nPlugin {
                 "police du jeu introuvable ({}) : {e} ; relancez `cargo xtask import-assets`",
                 font.display()
             ),
+        }
+        if let Some(bytes) = extra
+            && let Some(mut fonts) = app.world_mut().get_resource_mut::<Assets<Font>>()
+        {
+            let noto = fonts.add(Font::from_bytes(bytes));
+            app.insert_resource(UiFonts(FontSource::List(vec![
+                FontSource::default(),
+                FontSource::Handle(noto),
+            ])))
+            .add_systems(
+                PostUpdate,
+                apply_ui_fonts
+                    .before(bevy::text::Text2dUpdateSystems)
+                    .before(bevy::ui::UiSystems::Prepare),
+            );
         }
     }
 }
@@ -527,6 +567,21 @@ pub(crate) mod tests {
         assert!(!en.is_empty());
         for (id, text) in PORT_FILES {
             assert_eq!(keys(text), en, "clés de port-{id}.yaml");
+        }
+    }
+
+    /// Les polices Noto, quand elles ont été téléchargées.
+    #[test]
+    fn every_language_font_is_downloaded_with_the_others() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/fonts-noto");
+        if !dir.exists() {
+            eprintln!("polices Noto non téléchargées : test ignoré");
+            return;
+        }
+        for language in LANGUAGES {
+            if let Some(font) = language.font {
+                assert!(dir.join(font).exists(), "{} : {font}", language.id);
+            }
         }
     }
 
