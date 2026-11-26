@@ -11,6 +11,7 @@ use crate::{
     AppState,
     i18n::{LANGUAGES, language_by_id, t, tf},
     settings::{LaunchLanguage, Settings, VOLUME_STEP, clamp_volume},
+    theme::ThemeId,
 };
 
 #[derive(Debug, Default)]
@@ -33,6 +34,8 @@ enum Action {
     SoundVolume(i32),
     MusicVolume(i32),
     Fullscreen,
+    Theme(i32),
+    ColorBlind,
     Back,
 }
 
@@ -134,6 +137,33 @@ fn stepper(p: &mut ChildSpawnerCommands, title: String, value: String, less: Act
     });
 }
 
+/// Ligne « titre : [activé / désactivé] ».
+fn toggle(p: &mut ChildSpawnerCommands, title: String, on: bool, action: Action) {
+    p.spawn(Node {
+        column_gap: px(10),
+        align_items: AlignItems::Center,
+        ..default()
+    })
+    .with_children(|row| {
+        row.spawn((
+            label(title, 18.0),
+            Node {
+                width: px(220),
+                ..default()
+            },
+        ));
+        row.spawn(button(
+            action,
+            t(if on {
+                "port.settings.on"
+            } else {
+                "port.settings.off"
+            }),
+            328.0,
+        ));
+    });
+}
+
 fn refresh(
     mut commands: Commands,
     settings: Res<Settings>,
@@ -176,29 +206,28 @@ fn refresh(
                 Action::MusicVolume(-1),
                 Action::MusicVolume(1),
             );
-            p.spawn(Node {
-                column_gap: px(10),
-                align_items: AlignItems::Center,
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((
-                    label(t("settings.labels.fullscreen.title"), 18.0),
-                    Node {
-                        width: px(220),
-                        ..default()
-                    },
-                ));
-                row.spawn(button(
-                    Action::Fullscreen,
-                    t(if settings.fullscreen {
-                        "port.settings.on"
-                    } else {
-                        "port.settings.off"
-                    }),
-                    328.0,
-                ));
-            });
+            toggle(
+                p,
+                t("settings.labels.fullscreen.title"),
+                settings.fullscreen,
+                Action::Fullscreen,
+            );
+            stepper(
+                p,
+                t("settings.labels.theme.title"),
+                t(&format!(
+                    "settings.labels.theme.themes.{}",
+                    settings.theme.id()
+                )),
+                Action::Theme(-1),
+                Action::Theme(1),
+            );
+            toggle(
+                p,
+                t("settings.labels.enableColorBlindHelper.title"),
+                settings.color_blind,
+                Action::ColorBlind,
+            );
             if restart {
                 p.spawn((
                     label(t("dialogs.restartRequired.text"), 16.0),
@@ -240,6 +269,16 @@ fn on_activate(
             settings.music_volume = step(settings.music_volume, direction);
         }
         Action::Fullscreen => settings.fullscreen = !settings.fullscreen,
+        Action::Theme(direction) => {
+            let themes = ThemeId::ALL;
+            let index = themes
+                .iter()
+                .position(|&t| t == settings.theme)
+                .unwrap_or(0) as i32;
+            let next_index = (index + direction).rem_euclid(themes.len() as i32) as usize;
+            settings.theme = themes[next_index];
+        }
+        Action::ColorBlind => settings.color_blind = !settings.color_blind,
         Action::Back => next.set(AppState::MainMenu),
     }
 }

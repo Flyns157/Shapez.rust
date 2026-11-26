@@ -16,6 +16,7 @@ use crate::{
     shape_textures::ShapeTextures,
     shop::{OpenPanel, roman},
     sim::{GameSpeed, Sim, SimEventMsg, SimEventsSet},
+    theme::ThemedText,
 };
 
 /// Durée d'affichage d'un message de fin de niveau, en secondes.
@@ -68,7 +69,7 @@ fn spawn_hud(mut commands: Commands) {
             ..default()
         },
         children![
-            (TickText, Text::new("")),
+            (TickText, ThemedText, Text::new("")),
             (
                 Node {
                     align_items: AlignItems::Center,
@@ -87,6 +88,7 @@ fn spawn_hud(mut commands: Commands) {
                     ),
                     (
                         GoalText,
+                        ThemedText,
                         Text::new(""),
                         TextFont {
                             font_size: FontSize::Px(24.0),

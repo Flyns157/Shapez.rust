@@ -9,18 +9,17 @@ use bevy::{
     prelude::*,
     render::render_resource::{Extent3d, TextureDimension, TextureFormat},
 };
-use shapez_core::Color as ShapeColor;
 use shapez_sim::map::{CHUNK_SIZE, ChunkPos, ChunkResources, MapResource};
 
 use crate::{
     AppState,
     camera::{TILE_SIZE, Zoom, world_to_tile},
+    settings::Settings,
     shape_textures::ShapeTextures,
     sim::Sim,
+    theme::{Theme, active},
 };
 
-/// Fond de la carte (`THEME.map.background`, thème sombre).
-pub const MAP_BACKGROUND: Color = Color::srgb_u8(0x3e, 0x3f, 0x47);
 const CHUNK_WORLD_SIZE: f32 = CHUNK_SIZE as f32 * TILE_SIZE;
 /// Diamètre d'un item posé sur la carte (`defaultItemDiameter`).
 const ITEM_DIAMETER: f32 = 20.0;
@@ -51,7 +50,6 @@ pub struct MapRenderPlugin;
 impl Plugin for MapRenderPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<VisibleChunks>()
-            .insert_resource(ClearColor(MAP_BACKGROUND))
             .add_systems(OnExit(AppState::InGame), despawn_all_chunks)
             .add_systems(
                 Update,
@@ -63,33 +61,26 @@ impl Plugin for MapRenderPlugin {
     }
 }
 
-/// Couleur de fond d'une ressource (`THEME.map.resources`, thème sombre).
-fn resource_color(resource: MapResource) -> [u8; 3] {
-    match resource {
-        MapResource::Shape(_) => [0x5d, 0x5f, 0x6a],
-        MapResource::Color(ShapeColor::Red) => [0x85, 0x4f, 0x56],
-        MapResource::Color(ShapeColor::Green) => [0x66, 0x79, 0x64],
-        MapResource::Color(_) => [0x5e, 0x7c, 0xa4],
-    }
-}
-
 /// Image 16 × 16 (un pixel par tuile) : ressources à 50 % d'opacité, ou opaques sur
 /// le fond `chunkOverview.empty` pour la vue d'ensemble.
-fn chunk_image(chunk: &ChunkResources, overview: bool) -> Image {
+fn chunk_image(chunk: &ChunkResources, overview: bool, theme: &Theme) -> Image {
     let n = CHUNK_SIZE as usize;
     let mut data = Vec::with_capacity(n * n * 4);
     for y in 0..CHUNK_SIZE {
         for x in 0..CHUNK_SIZE {
             let px = match (chunk.get(x, y), overview) {
                 (Some(r), true) => {
-                    let [r, g, b] = resource_color(r);
+                    let [r, g, b] = theme.resource_color(r);
                     [r, g, b, 0xff]
                 }
                 (Some(r), false) => {
-                    let [r, g, b] = resource_color(r);
+                    let [r, g, b] = theme.resource_color(r);
                     [r, g, b, 0x80]
                 }
-                (None, true) => [0x44, 0x48, 0x56, 0xff],
+                (None, true) => {
+                    let [r, g, b] = theme.overview_empty;
+                    [r, g, b, 0xff]
+                }
                 (None, false) => [0, 0, 0, 0],
             };
             data.extend_from_slice(&px);
@@ -137,12 +128,16 @@ fn sync_visible_chunks(
     zoom: Res<Zoom>,
     window: Single<&Window>,
     camera: Single<&Transform, With<Camera2d>>,
+    settings: Res<Settings>,
 ) {
     let half = Vec2::new(window.width(), window.height()) / (2.0 * zoom.0);
     let (min, max) = visible_range(camera.translation.truncate(), half);
+    let theme = active(&settings);
+    // Un changement de thème redessine tous les chunks.
+    let retheme = settings.is_changed();
 
     visible.0.retain(|pos, entity| {
-        let keep = (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y);
+        let keep = !retheme && (min.x..=max.x).contains(&pos.x) && (min.y..=max.y).contains(&pos.y);
         if !keep {
             commands.entity(*entity).despawn();
         }
@@ -157,8 +152,8 @@ fn sync_visible_chunks(
                 continue;
             }
             let chunk = sim.map.chunk(pos).clone();
-            let background = images.add(chunk_image(&chunk, false));
-            let overview_image = images.add(chunk_image(&chunk, true));
+            let background = images.add(chunk_image(&chunk, false, theme));
+            let overview_image = images.add(chunk_image(&chunk, true, theme));
             let origin = pos.origin();
             let center = Vec2::new(
                 (origin.x as f32 + CHUNK_SIZE as f32 / 2.0) * TILE_SIZE,
@@ -277,6 +272,7 @@ fn draw_grid(
     zoom: Res<Zoom>,
     window: Single<&Window>,
     camera: Single<&Transform, With<Camera2d>>,
+    settings: Res<Settings>,
 ) {
     if zoom.is_overview() {
         return;
@@ -290,7 +286,7 @@ fn draw_grid(
         Isometry2d::from_translation(snapped),
         UVec2::new(cells.x as u32, cells.y as u32),
         Vec2::splat(TILE_SIZE),
-        Color::srgba(1.0, 1.0, 1.0, 0.025),
+        active(&settings).grid,
     );
 }
 

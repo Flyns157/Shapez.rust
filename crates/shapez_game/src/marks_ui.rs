@@ -21,6 +21,7 @@ use crate::{
     i18n::t,
     shape_textures::ShapeTextures,
     sim::Sim,
+    theme::ThemedText,
 };
 
 #[derive(Debug, Default)]
@@ -228,7 +229,8 @@ fn update_panel(
                     t("port.marks.help")
                 ),
                 14.0,
-            ));
+            ))
+            .insert(ThemedText);
             let mut entries = vec![(None, t("ingame.waypoints.hub"))];
             entries.extend(waypoints.into_iter().enumerate().map(|(i, l)| (Some(i), l)));
             for (index, text) in entries {
@@ -246,6 +248,7 @@ fn update_panel(
             }
             p.spawn((
                 label(t("port.marks.pinned"), 14.0),
+                ThemedText,
                 Node {
                     margin: UiRect::top(px(10)),
                     ..default()
@@ -259,7 +262,7 @@ fn update_panel(
                         ..default()
                     },
                     children![
-                        label(text, 16.0),
+                        (label(text, 16.0), ThemedText),
                         (
                             ImageNode::new(handle),
                             Node {

@@ -19,6 +19,7 @@ use crate::{
     i18n::{building_name, t, tf},
     shop::OpenPanel,
     sim::Sim,
+    theme::ThemedText,
     wires_ui::{ActiveLayer, WiresUiSet},
 };
 
@@ -363,6 +364,7 @@ fn spawn_toolbar(mut commands: Commands) {
     commands.spawn((
         DespawnOnExit(AppState::InGame),
         ToolbarText,
+        ThemedText,
         Text::new(""),
         TextFont {
             font_size: FontSize::Px(14.0),
