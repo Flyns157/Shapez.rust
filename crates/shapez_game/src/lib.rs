@@ -7,6 +7,7 @@ pub mod buildings_view;
 pub mod camera;
 pub mod editing_ui;
 pub mod gallery;
+pub mod i18n;
 pub mod items_view;
 pub mod main_menu;
 pub mod map_render;
@@ -32,6 +33,9 @@ pub struct GamePlugin;
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
+            i18n::I18nPlugin {
+                asset_dir: asset_dir(),
+            },
             state::AppStatePlugin,
             sim::SimPlugin,
             menu::MenuPlugin,
@@ -56,6 +60,13 @@ impl Plugin for GamePlugin {
         ))
         .add_systems(Startup, spawn_camera);
     }
+}
+
+/// Dossier `assets/` à la racine du workspace (rempli par `cargo xtask import-assets`).
+/// `SHAPEZ_ASSETS` permet de le déplacer, par exemple pour un binaire distribué.
+pub fn asset_dir() -> String {
+    std::env::var("SHAPEZ_ASSETS")
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets").to_string())
 }
 
 fn spawn_camera(mut commands: Commands) {

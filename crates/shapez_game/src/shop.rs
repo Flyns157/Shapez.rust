@@ -16,7 +16,13 @@ use shapez_sim::{
     upgrades::UpgradeKind,
 };
 
-use crate::{AppState, camera::CameraSet, shape_textures::ShapeTextures, sim::Sim};
+use crate::{
+    AppState,
+    camera::CameraSet,
+    i18n::{decimal, t, tf, upgrade_name},
+    shape_textures::ShapeTextures,
+    sim::Sim,
+};
 
 /// Panneaux ouverts. Un seul à la fois, comme dans le JS.
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -92,16 +98,6 @@ impl Plugin for PanelsPlugin {
     }
 }
 
-/// Nom affiché d'une famille (`shop.js`, sans accents : police par défaut).
-pub fn upgrade_name(kind: UpgradeKind) -> &'static str {
-    match kind {
-        UpgradeKind::Belt => "Convoyeurs, equilibreurs et tunnels",
-        UpgradeKind::Miner => "Extraction",
-        UpgradeKind::Processors => "Decoupe, rotation et empilement",
-        UpgradeKind::Painting => "Melange et peinture",
-    }
-}
-
 /// Chiffres romains des paliers (`getRomanNumber`).
 pub fn roman(mut n: usize) -> String {
     const TABLE: [(usize, &str); 13] = [
@@ -130,7 +126,10 @@ pub fn roman(mut n: usize) -> String {
 }
 
 fn multiplier(improvement: u64) -> String {
-    format!("x{:.2}", improvement as f64 / IMPROVEMENT_ONE as f64)
+    format!(
+        "x{}",
+        decimal(improvement as f64 / IMPROVEMENT_ONE as f64, 2)
+    )
 }
 
 fn panel_node() -> Node {
@@ -253,7 +252,7 @@ fn icon(handle: Handle<Image>, size: f32) -> impl Bundle {
     )
 }
 
-fn button(marker: impl Bundle, text: &str, enabled: bool) -> impl Bundle {
+fn button(marker: impl Bundle, text: impl Into<String>, enabled: bool) -> impl Bundle {
     let color = if enabled {
         Color::srgb(0.2, 0.55, 0.3)
     } else {
@@ -322,22 +321,26 @@ fn update_shop(
         let level = hub.upgrade_level(kind);
         let tier = hub.next_tier(kind);
         let title = match tier {
-            Some(t) => format!(
-                "{} - niveau {} : {} -> {}",
-                upgrade_name(kind),
-                roman(level + 1),
-                multiplier(current(kind)),
-                multiplier(current(kind) + t.improvement)
+            Some(tier) => tf(
+                "port.shop.tier",
+                &[
+                    ("name", &upgrade_name(kind)),
+                    ("tier", &tf("ingame.shop.tier", &[("x", &roman(level + 1))])),
+                    ("from", &multiplier(current(kind))),
+                    ("to", &multiplier(current(kind) + tier.improvement)),
+                ],
             ),
-            None => format!(
-                "{} - niveau maximal ({})",
-                upgrade_name(kind),
-                multiplier(current(kind))
+            None => tf(
+                "port.shop.maxTier",
+                &[
+                    ("name", &upgrade_name(kind)),
+                    ("mult", &multiplier(current(kind))),
+                ],
             ),
         };
         let requirements: Vec<(&'static str, Handle<Image>, String, bool)> = tier
-            .map(|t| {
-                t.required
+            .map(|tier| {
+                tier.required
                     .iter()
                     .map(|&(key, amount)| {
                         let def = shapez_core::ShapeDef::from_short_key(key).expect("forme valide");
@@ -349,10 +352,11 @@ fn update_shop(
                         (
                             key,
                             textures.get_or_render(def, &mut images),
-                            format!(
-                                "{have} / {amount}{}",
-                                if pinned { " (epinglee)" } else { "" }
-                            ),
+                            if pinned {
+                                format!("{have} / {amount} {}", t("port.shop.pinned"))
+                            } else {
+                                format!("{have} / {amount}")
+                            },
                             have >= amount,
                         )
                     })
@@ -372,7 +376,7 @@ fn update_shop(
         .despawn_children()
         .with_children(|p| {
             p.spawn(label(
-                "Ameliorations (F ou Echap pour fermer ; clic sur une forme pour l'epingler)",
+                format!("{} {}", t("ingame.shop.title"), t("port.shop.help")),
                 22.0,
                 Color::WHITE,
             ));
@@ -399,7 +403,11 @@ fn update_shop(
                             ));
                             line.spawn(label(text, 16.0, if enough { ENOUGH } else { MISSING }));
                         }
-                        line.spawn(button(BuyButton(kind), "Acheter", affordable));
+                        line.spawn(button(
+                            BuyButton(kind),
+                            t("ingame.shop.buttonUnlock"),
+                            affordable,
+                        ));
                     });
                 });
             }
@@ -446,7 +454,10 @@ fn update_stats(
             let text = match source.0 {
                 DataSource::Stored => n.to_string(),
                 // Formes sur la dernière tranche de 10 s, ramenées à la minute.
-                _ => format!("{} / min", n * 60 / SLICE_SECONDS),
+                _ => tf(
+                    "ingame.statistics.shapesDisplayUnits.minute",
+                    &[("shapes", &(n * 60 / SLICE_SECONDS).to_string())],
+                ),
             };
             (
                 textures.get_or_render(*sim.registry.get(id), &mut images),
@@ -467,18 +478,27 @@ fn update_stats(
                 ..default()
             })
             .with_children(|head| {
-                head.spawn(label("Statistiques (G pour fermer)", 22.0, Color::WHITE));
+                head.spawn(label(
+                    format!(
+                        "{} {}",
+                        t("ingame.statistics.title"),
+                        t("port.statistics.help")
+                    ),
+                    22.0,
+                    Color::WHITE,
+                ));
                 for (s, name) in [
-                    (DataSource::Produced, "Produites"),
-                    (DataSource::Delivered, "Livrees"),
-                    (DataSource::Stored, "En stock"),
+                    (DataSource::Produced, "produced"),
+                    (DataSource::Delivered, "delivered"),
+                    (DataSource::Stored, "stored"),
                 ] {
+                    let name = t(&format!("ingame.statistics.dataSources.{name}.title"));
                     head.spawn(button(SourceButton(s), name, s == current));
                 }
             });
             if empty {
                 p.spawn(label(
-                    "Rien pour l'instant : les debits portent sur les 10 dernieres secondes.",
+                    t("port.statistics.empty"),
                     16.0,
                     Color::srgb(0.7, 0.7, 0.7),
                 ));

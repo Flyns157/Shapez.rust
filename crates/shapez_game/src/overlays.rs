@@ -17,6 +17,7 @@ use shapez_sim::{
 use crate::{
     AppState,
     camera::{TILE_SIZE, tile_to_world},
+    i18n::{decimal, format_big_number},
     shape_textures::ShapeTextures,
     sim::Sim,
 };
@@ -57,24 +58,6 @@ impl Plugin for OverlaysPlugin {
                 .run_if(in_state(AppState::InGame)),
         );
     }
-}
-
-/// `formatBigNumber` avec le séparateur décimal français.
-pub fn format_big_number(n: u32) -> String {
-    if n < 1000 {
-        return n.to_string();
-    }
-    let mut lead = f64::from(n);
-    let mut suffix = "";
-    for s in ["k", "M", "B", "T"] {
-        lead /= 1000.0;
-        suffix = s;
-        if lead < 1000.0 {
-            break;
-        }
-    }
-    let rounded = (lead * 10.0).round() / 10.0;
-    format!("{rounded}{suffix}").replace('.', ",")
 }
 
 /// `smoothPulse`.
@@ -159,7 +142,7 @@ fn wanted_parts(sim: &Sim) -> HashMap<(BuildingId, u8), Part> {
                     ),
                 );
                 let throughput = sim.factory.reader(id).map_or(0.0, |r| r.throughput());
-                let text = format!("{:.1}", throughput).replace('.', ",");
+                let text = decimal(f64::from(throughput), 1);
                 out.insert(
                     (id, 1),
                     part(
@@ -285,18 +268,5 @@ fn animate_pulses(sim: Res<Sim>, mut query: Query<&mut Sprite, With<Pulse>>) {
     for mut sprite in &mut query {
         sprite.color = Color::WHITE.with_alpha(0.6 + 0.4 * pulse);
         sprite.custom_size = Some(Vec2::splat(TILE_SIZE * (0.7 + 0.2 * pulse)));
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn big_numbers_use_js_suffixes() {
-        assert_eq!(format_big_number(999), "999");
-        assert_eq!(format_big_number(1000), "1k");
-        assert_eq!(format_big_number(1250), "1,3k");
-        assert_eq!(format_big_number(5000), "5k");
     }
 }

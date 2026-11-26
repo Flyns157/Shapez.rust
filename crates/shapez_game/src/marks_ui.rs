@@ -18,6 +18,7 @@ use crate::{
     AppState,
     camera::{Zoom, tile_to_world, world_to_tile},
     editing_ui::letter,
+    i18n::t,
     shape_textures::ShapeTextures,
     sim::Sim,
 };
@@ -220,8 +221,15 @@ fn update_panel(
         .entity(entity)
         .despawn_children()
         .with_children(|p| {
-            p.spawn(label("Reperes (M = ajouter, Maj+clic = retirer)", 14.0));
-            let mut entries = vec![(None, "Hub".to_owned())];
+            p.spawn(label(
+                format!(
+                    "{} {}",
+                    t("ingame.waypoints.waypoints"),
+                    t("port.marks.help")
+                ),
+                14.0,
+            ));
+            let mut entries = vec![(None, t("ingame.waypoints.hub"))];
             entries.extend(waypoints.into_iter().enumerate().map(|(i, l)| (Some(i), l)));
             for (index, text) in entries {
                 p.spawn((
@@ -237,7 +245,7 @@ fn update_panel(
                 ));
             }
             p.spawn((
-                label("Formes epinglees (Maj+clic = retirer)", 14.0),
+                label(t("port.marks.pinned"), 14.0),
                 Node {
                     margin: UiRect::top(px(10)),
                     ..default()

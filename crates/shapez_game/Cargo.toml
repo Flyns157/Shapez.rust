@@ -15,6 +15,7 @@ shapez_core.workspace = true
 shapez_sim.workspace = true
 shapez_render_shapes.workspace = true
 shapez_save.workspace = true
+serde_norway = "0.9"
 
 [features]
 # Compilation incrémentale plus rapide en dev : `cargo run --features dev`.

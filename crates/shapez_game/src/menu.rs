@@ -4,16 +4,17 @@
 use bevy::prelude::*;
 
 use shapez_sim::{
-    building::{BuildingKind, Layer},
+    building::{BuildingKind, Layer, Variant},
     hub_goals::Reward,
     placement::SimEvent,
 };
 
 use crate::{
     AppState,
-    placement_ui::{PlacementState, toolbar_entry},
+    i18n::{building_name, reward_name, tf, upgrade_name},
+    placement_ui::{PlacementState, toolbar_key},
     shape_textures::ShapeTextures,
-    shop::{OpenPanel, upgrade_name},
+    shop::{OpenPanel, roman},
     sim::{GameSpeed, Sim, SimEventMsg, SimEventsSet},
 };
 
@@ -117,29 +118,39 @@ fn update_hud(
     mut goal: Single<&mut Text, (With<GoalText>, Without<TickText>)>,
     mut icon: Single<&mut ImageNode, With<GoalIcon>>,
 ) {
-    tick.0 = format!(
-        "Tick {} - vitesse x{} - graine {} (ZQSD/fleches, molette, clic milieu ; Tab = vitesse, espace = pause, Echap = menu)",
-        sim.tick_count(),
-        speed.0,
-        sim.map.seed()
+    let status = tf(
+        "port.hud.status",
+        &[
+            ("tick", &sim.tick_count().to_string()),
+            ("speed", &speed.0.to_string()),
+            ("seed", &sim.map.seed().to_string()),
+        ],
     );
+    if tick.0 != status {
+        tick.0 = status;
+    }
     let g = sim.hub.goal();
-    let text = format!(
-        "{} {} - livrer {} : {} / {}{}",
-        if sim.hub.is_free_play() {
-            "Mode libre, niveau"
-        } else {
-            "Niveau"
-        },
-        sim.hub.level,
-        sim.registry.get(g.shape),
-        sim.hub.goal_delivered(),
-        g.required,
+    let level = sim.hub.level.to_string();
+    let title = if sim.hub.is_free_play() {
+        tf("port.hud.freeplayLevel", &[("level", &level)])
+    } else {
+        tf(
+            "ingame.levelCompleteNotification.levelTitle",
+            &[("level", &level)],
+        )
+    };
+    let text = tf(
         if g.throughput_only {
-            " par seconde"
+            "port.hud.goalPerSecond"
         } else {
-            ""
-        }
+            "port.hud.goal"
+        },
+        &[
+            ("level", &title),
+            ("shape", &sim.registry.get(g.shape).to_string()),
+            ("delivered", &sim.hub.goal_delivered().to_string()),
+            ("required", &g.required.to_string()),
+        ],
     );
     if goal.0 != text {
         goal.0 = text;
@@ -147,38 +158,6 @@ fn update_hud(
     let handle = textures.get_or_render(*sim.registry.get(g.shape), &mut images);
     if icon.image != handle {
         icon.image = handle;
-    }
-}
-
-/// Nom affiché d'une récompense (sans accents : police par défaut).
-fn reward_name(reward: Reward) -> &'static str {
-    match reward {
-        Reward::CutterAndTrash => "decoupeur et poubelle",
-        Reward::Rotater => "rotateur",
-        Reward::Painter => "peintre",
-        Reward::Mixer => "melangeur",
-        Reward::Stacker => "empileur",
-        Reward::Balancer => "equilibreur",
-        Reward::Tunnel => "tunnel",
-        Reward::RotaterCcw => "rotateur anti-horaire",
-        Reward::Rotater180 => "rotateur 180",
-        Reward::MinerChainable => "extracteur chainable",
-        Reward::UndergroundBeltTier2 => "tunnel niveau 2",
-        Reward::BeltReader => "lecteur de convoyeur",
-        Reward::Splitter => "separateur",
-        Reward::CutterQuad => "decoupeur quadruple",
-        Reward::PainterDouble => "peintre double",
-        Reward::Storage => "stockage",
-        Reward::Merger => "fusionneur",
-        Reward::WiresPainterAndLevers => "wires, peintre quadruple et leviers",
-        Reward::Display => "afficheur",
-        Reward::ConstantSignal => "signal constant",
-        Reward::LogicGates => "portes logiques",
-        Reward::VirtualProcessing => "traitement virtuel",
-        Reward::Filter => "filtre",
-        Reward::Blueprints => "plans",
-        Reward::Freeplay => "mode libre",
-        Reward::None | Reward::NoRewardFreeplay => "aucune",
     }
 }
 
@@ -205,13 +184,14 @@ fn unlocked_buildings(reward: Reward) -> Vec<String> {
     kinds
         .iter()
         .filter_map(|&kind| {
-            let (key, name) = toolbar_entry(kind)?;
-            let layer = if kind.layer() == Layer::Wires {
-                ", couche cables (E)"
+            let key = toolbar_key(kind)?;
+            let template = if kind.layer() == Layer::Wires {
+                "port.notify.buildingKeyWires"
             } else {
-                ""
+                "port.notify.buildingKey"
             };
-            Some(format!("{name} (touche {key}{layer})"))
+            let name = building_name(kind, Variant::Default);
+            Some(tf(template, &[("name", &name), ("key", key)]))
         })
         .collect()
 }
@@ -224,28 +204,39 @@ fn notify_levels(
     let (text, timer) = &mut *text;
     for SimEventMsg(event) in events.read() {
         let message = match *event {
-            SimEvent::LevelCompleted(done) if done.reward == Reward::NoRewardFreeplay => {
-                format!("Niveau {} termine !", done.level)
-            }
+            SimEvent::LevelCompleted(done) if done.reward == Reward::NoRewardFreeplay => tf(
+                "ingame.notifications.freeplayLevelComplete",
+                &[("level", &done.level.to_string())],
+            ),
             SimEvent::LevelCompleted(done) => {
                 let mut m = format!(
-                    "Niveau {} termine ! Debloque : {}",
-                    done.level,
-                    reward_name(done.reward)
+                    "{} {}",
+                    tf(
+                        "ingame.notifications.freeplayLevelComplete",
+                        &[("level", &done.level.to_string())],
+                    ),
+                    tf(
+                        "ingame.levelCompleteNotification.unlockText",
+                        &[("reward", &reward_name(done.reward))],
+                    )
                 );
                 let buildings = unlocked_buildings(done.reward);
                 if !buildings.is_empty() {
-                    m.push_str(&format!("\nNouveau : {}", buildings.join(", ")));
+                    m.push('\n');
+                    m.push_str(&tf(
+                        "port.notify.newBuildings",
+                        &[("list", &buildings.join(", "))],
+                    ));
                 }
                 m
             }
-            SimEvent::UpgradePurchased { kind, level } => {
-                format!(
-                    "Amelioration achetee : {} niveau {}",
-                    upgrade_name(kind),
-                    level + 1
-                )
-            }
+            SimEvent::UpgradePurchased { kind, level } => tf(
+                "port.notify.upgradeBought",
+                &[
+                    ("name", &upgrade_name(kind)),
+                    ("tier", &tf("ingame.shop.tier", &[("x", &roman(level + 1))])),
+                ],
+            ),
             _ => continue,
         };
         text.0 = message;

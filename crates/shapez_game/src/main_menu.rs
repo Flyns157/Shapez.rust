@@ -8,7 +8,12 @@ use bevy::{
 use shapez_save::{decode, storage::SaveEntry};
 use shapez_sim::TICKS_PER_SECOND;
 
-use crate::{AppState, saves::Saves, sim::NextGame};
+use crate::{
+    AppState,
+    i18n::{t, tf},
+    saves::Saves,
+    sim::NextGame,
+};
 
 /// Nombre de sauvegardes listées.
 const LISTED_SAVES: usize = 8;
@@ -116,21 +121,27 @@ fn spawn_menu(mut commands: Commands) {
 fn play_time(ticks: u64) -> String {
     let minutes = ticks / (u64::from(TICKS_PER_SECOND) * 60);
     if minutes >= 60 {
-        format!("{} h {:02} min", minutes / 60, minutes % 60)
+        tf(
+            "port.time.hoursMinutes",
+            &[
+                ("hours", &(minutes / 60).to_string()),
+                ("minutes", &format!("{:02}", minutes % 60)),
+            ],
+        )
     } else {
-        format!("{minutes} min")
+        tf("port.time.minutes", &[("minutes", &minutes.to_string())])
     }
 }
 
 fn describe(entry: &SaveEntry) -> String {
     match &entry.meta {
         Ok(meta) => format!(
-            "{} - niveau {} - {}",
+            "{} - {} - {}",
             entry.name,
-            meta.level,
+            tf("mainMenu.savegameLevel", &[("x", &meta.level.to_string())]),
             play_time(meta.ticks)
         ),
-        Err(_) => format!("{} - illisible", entry.name),
+        Err(_) => tf("port.menu.unreadable", &[("name", &entry.name)]),
     }
 }
 
@@ -156,23 +167,28 @@ fn refresh_saves(
             if let Some(latest) = &latest {
                 p.spawn(button(
                     MenuButton::Continue(latest.name.clone()),
-                    format!("Continuer ({})", describe(latest)),
+                    format!("{} ({})", t("mainMenu.continue"), describe(latest)),
                     420.0,
                     ACCENT,
                 ));
             }
             p.spawn(button(
                 MenuButton::NewGame,
-                "Nouvelle partie",
+                t("mainMenu.newGame"),
                 420.0,
                 BUTTON,
             ));
-            p.spawn(button(MenuButton::Gallery, "Formes", 420.0, BUTTON));
+            p.spawn(button(
+                MenuButton::Gallery,
+                t("port.menu.shapes"),
+                420.0,
+                BUTTON,
+            ));
             if !status.is_empty() {
                 p.spawn((label(status, 16.0), TextColor(Color::srgb(1.0, 0.5, 0.45))));
             }
             if !entries.is_empty() {
-                p.spawn(label("Sauvegardes", 22.0));
+                p.spawn(label(t("port.menu.savegames"), 22.0));
             }
             for entry in entries.iter().take(LISTED_SAVES) {
                 let confirming = pending.as_deref() == Some(entry.name.as_str());
@@ -201,7 +217,11 @@ fn refresh_saves(
                     }
                     row.spawn(button(
                         MenuButton::Delete(entry.name.clone()),
-                        if confirming { "Confirmer" } else { "Supprimer" },
+                        t(if confirming {
+                            "port.menu.confirm"
+                        } else {
+                            "dialogs.buttons.delete"
+                        }),
                         130.0,
                         if confirming { DANGER } else { BUTTON },
                     ));
@@ -209,7 +229,13 @@ fn refresh_saves(
             }
             if let Some(dir) = &saves.0 {
                 p.spawn((
-                    label(format!("Dossier : {}", dir.root().display()), 14.0),
+                    label(
+                        tf(
+                            "port.menu.folder",
+                            &[("path", &dir.root().display().to_string())],
+                        ),
+                        14.0,
+                    ),
                     TextColor(Color::srgb(0.6, 0.6, 0.6)),
                 ));
             }
@@ -236,7 +262,7 @@ fn on_activate(
         MenuButton::Gallery => next.set(AppState::ShapeGallery),
         MenuButton::Continue(name) | MenuButton::Load(name) => {
             let loaded = dir
-                .ok_or_else(|| "pas de dossier de sauvegardes".to_owned())
+                .ok_or_else(|| t("port.menu.noSaveFolder"))
                 .and_then(|d| d.read(name).map_err(|e| e.to_string()))
                 .and_then(|bytes| decode(&bytes).map_err(|e| e.to_string()));
             match loaded {
@@ -248,7 +274,7 @@ fn on_activate(
                     next.set(AppState::InGame);
                 }
                 Err(e) => {
-                    state.status = format!("Impossible de charger {name} : {e}");
+                    state.status = tf("port.menu.loadFailed", &[("name", name), ("error", &e)]);
                     state.dirty = true;
                 }
             }
@@ -258,7 +284,10 @@ fn on_activate(
             if state.pending_delete.as_deref() == Some(name.as_str()) {
                 state.pending_delete = None;
                 if let Some(Err(e)) = dir.map(|d| d.delete(name)) {
-                    state.status = format!("Impossible de supprimer {name} : {e}");
+                    state.status = tf(
+                        "port.menu.deleteFailed",
+                        &[("name", name), ("error", &e.to_string())],
+                    );
                 }
             } else {
                 state.pending_delete = Some(name.clone());
@@ -274,6 +303,7 @@ mod tests {
 
     #[test]
     fn play_time_is_readable() {
+        crate::i18n::tests::use_test_translations();
         assert_eq!(play_time(0), "0 min");
         assert_eq!(play_time(60 * 60 * 12), "12 min");
         assert_eq!(play_time(60 * 60 * 65), "1 h 05 min");
